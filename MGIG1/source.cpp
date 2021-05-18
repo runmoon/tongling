@@ -1,19 +1,19 @@
 #include<head.h>
 const double T_BellFurnace = 30.0;  // 单位:小时; 钟罩炉每炉30小时
 
-set<string> rollingMachSet{ "BD-S003","BD-S005","BD-S025","BD-S009","BD-S010","BD-S011" };  // 轧机组
+set<string> rollingMachSet{ "BD-S003","BD-S005","BD-S025","BD-S009","BD-S010","BD-S011" };  // 轧机组; getStatus()用
 // BD-S003	二辊可逆式热轧机; BD-S005	粗轧机; BD-S025	四辊中轧机; 
 // BD-S009	森德威20辊精轧机; BD-S010	20辊精轧机; BD-S011	4辊精轧机
 
 set<string> cut_StretchMachSet{ "BD-S018","BD-S015",
-					"BD-S016","BD-S019","BD-S020","BD-S021" };  // 横纵剪和拉弯矫
+					"BD-S016","BD-S019","BD-S020","BD-S021" };  // 横纵剪和拉弯矫; getStatus()用
 // BD-S018	1250横剪机组; BD-S015	650拉弯矫; 
 // BD-S016	1250纵剪; BD-S019	650薄纵剪; BD-S020	650厚纵剪; BD-S021	350纵剪
 
 set<string> washMachSet{ "BD-S012","BD-S013","BD-S014" };
-// BD-S012	1250清洗机列; BD-S013	650清洗机列; BD-S014	新650清洗机列; 
+// BD-S012	1250清洗机列; BD-S013	650清洗机列; BD-S014	新650清洗机列; getStatus()用
 
-map<string, string> alloyGrade2Type{
+map<string, string> alloyGrade2Type{    // 由合金牌号（grade）查对应的合金种类（type）
 	make_pair("C1010", "copper"),
 	make_pair("C1020", "copper"),
 	make_pair("C1100", "copper"),
