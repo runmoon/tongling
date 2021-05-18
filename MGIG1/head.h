@@ -80,7 +80,7 @@ public:
 
 	vector<pair<string, unsigned>>  m_proceMachs;     // 工序(机器)流程  vector<pair<mach代码, 本工序第几次重入>>
 	vector<pair<pair<string, unsigned>, ProcessTargets>>  m_proceTargets;  // 在每个工序(机器)上的加工目标，vector<pair<pair<mach代码, 本工序第几次重入>, 加工目标>>
-	vector<pair<pair<string, unsigned>, time_duration>>  m_proceTimes;   // 在每个工序(机器)上的加工时长，vector<pair<pair<mach代码, 第几重>, 本工序第几次重入>>
+	vector<pair<pair<string, unsigned>, time_duration>>  m_proceTimes;   // 在每个工序(机器)上的加工时长，vector<pair<pair<mach代码, 本工序第几次重入>, 加工时长>>
 
 
 	time_duration m_totalProceTime;   // 该Job的总加工时长

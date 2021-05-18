@@ -1,5 +1,5 @@
 #include<head.h>
-
+const double T_BellFurnace = 30.0;  // 单位:小时; 钟罩炉每炉30小时
 
 set<string> rollingMachSet{ "BD-S003","BD-S005","BD-S025","BD-S009","BD-S010","BD-S011" };  // 轧机组
 // BD-S003	二辊可逆式热轧机; BD-S005	粗轧机; BD-S025	四辊中轧机; 
@@ -12,20 +12,6 @@ set<string> cut_StretchMachSet{ "BD-S018","BD-S015",
 
 set<string> washMachSet{ "BD-S012","BD-S013","BD-S014" };
 // BD-S012	1250清洗机列; BD-S013	650清洗机列; BD-S014	新650清洗机列; 
-
-/*
-BD-S012	1250清洗机列
-BD-S013	650清洗机列
-BD - S014	新650清洗机列
-
-BD - S018	1250横剪机组
-BD - S015	650拉弯矫
-
-BD - S016	1250纵剪
-BD - S019	650薄纵剪
-BD - S020	650厚纵剪
-BD - S021	350纵剪
-*/
 
 map<string, string> alloyGrade2Type{
 	make_pair("C1010", "copper"),
@@ -45,6 +31,20 @@ map<string, string> alloyGrade2Type{
 	make_pair("TU1", "copper"),
 	make_pair("TU2", "copper"),};
 
+
+/*
+BD-S012	1250清洗机列
+BD-S013	650清洗机列
+BD - S014	新650清洗机列
+
+BD - S018	1250横剪机组
+BD - S015	650拉弯矫
+
+BD - S016	1250纵剪
+BD - S019	650薄纵剪
+BD - S020	650厚纵剪
+BD - S021	350纵剪
+*/
 
 // 连接mysql数据库
 bool ConnectDatabase(MYSQL* mysql)
@@ -96,16 +96,6 @@ MYSQL_RES* QueryDatabase1(MYSQL* mysql, char* sql)
 	cout << "number of dataline returned: " << mysql_num_rows(res) << endl;
 	return res;
 }
-
-struct capacityWithConditions
-{
-	string m_machCode;
-	string m_width;
-	string m_thick;
-	string m_alloyType;
-	string m_status;
-	string m_processT;
-};
 
 // 判断_number是否在_aRange(格式为"[0.1,3.4]")的范围内
 bool isInRange(string _aRange, double _number)
@@ -207,6 +197,8 @@ time_duration getProcessTime(Mach* machP, Job * jobP, unsigned machIndex)
 	ProcessTargets const& processTargets = jobP->m_proceTargets[machIndex].second;  //??？？
 	double processT(0);
 	// bool isRollingMach(rollingMachSet.count(machP->m_machCode) > 0);
+	if ("BD-S006" == machP->m_machCode)  // 如果是钟罩炉
+		return double2timeDuration(T_BellFurnace);
 
 	for (auto& cap : machP->m_capsOriginalInfo)
 	{
@@ -309,7 +301,7 @@ bool myCmpBy_time_duration(pair<Job*, time_duration> _a, pair<Job*, time_duratio
 // 小时数（double）转化为time_duration类型
 time_duration double2timeDuration(double _processT)
 {
-	int _n_Sec = int(_processT * 3600);//字符串转整型
+	int _n_Sec = int(_processT * 3600);//转整型
 
 	int _hour = 0;
 	int _minute = 0;
@@ -340,6 +332,13 @@ double timeDuration2Double(time_duration _timeDura)
 bool  insertJobToMach(Job& curJob, Mach& curMach, unsigned machIndexOfJob)
 {
 	time_duration& timeDuration = curJob.m_proceTimes[machIndexOfJob].second;
+	if("BD-S006" ==curMach.m_machCode)
+
+	{
+		cout << "machinecode=" << curMach.m_machCode << endl;
+		cout << "double2timeDuration(T_BellFurnace)=" << to_iso_string(timeDuration) << endl;
+
+	}
 	bool isInserted(false);
 	unsigned insertIndexOfMach(0);  // machine的插入的索引
 
@@ -470,6 +469,7 @@ void myInitialization(vector<string> &jobsCodeVec, vector<string> &machsCodeVec,
 
 };
 
+//  初始化产能
 void initializeCaps(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap)
 {
 	MYSQL_ROW row;  //一个行数据的类型安全(type-safe)的表示，表示一条数据
@@ -576,10 +576,6 @@ void initializeJobs2(MYSQL_RES* res, vector<string>& jobsCodeVec, map<string, Jo
 		// strip_id, process_num, unit_id, thick, width, note, unit_name_orig
 		// 重复读取行，并输出获取每行中字段的值，直到row为NULL
 		string jobCode = row[0];
-		int orderOfMach = mystoi(row[1]);
-		string machCode = row[2];
-		
-		double processT = mystod(row[3]);
 		Job* jobP;
 		if (jobsMap.find(jobCode) == jobsMap.end()) // 如果jobCode不在jobsMap中，
 		{
@@ -600,16 +596,14 @@ void initializeJobs2(MYSQL_RES* res, vector<string>& jobsCodeVec, map<string, Jo
 		else
 			jobP = jobsMap[jobCode];
 		*/
-
+		int orderOfMach = mystoi(row[1]);
+		string machCode = row[2];
 		unsigned num_reentry = 1;
-		//machCode
 		for (pair<string, unsigned>& machInfo : jobP->m_proceMachs)
 			num_reentry = (machCode ==machInfo.first)? (num_reentry+1): num_reentry;
 		//cout<< jobP->m_jobCode<<", "<< machCode << endl;
 		jobP->m_proceMachs.push_back(make_pair(machCode, num_reentry));
 		jobP->m_proceTargets.push_back(make_pair(make_pair(machCode, num_reentry), ProcessTargets()));
-		time_duration timeDura= double2timeDuration(processT);
-		jobP->m_proceTimes.push_back(make_pair(make_pair(machCode, num_reentry), timeDura));
 		++i;
 	}
 	cout << "There are " << i << " notes in total." << endl;
@@ -651,7 +645,7 @@ void initialMachs(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach
 void initialMachs2(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap)
 {
 
-	Mach *mach_bellFurnace = machsMap["BD-S006"];  // 钟罩炉
+	//Mach *mach_bellFurnace = machsMap["BD-S006"];  // 钟罩炉
 
 
 	MYSQL_ROW row;  //一个行数据的类型安全(type-safe)的表示，表示一条数据
@@ -808,12 +802,11 @@ void main()
 		curJobP->m_startDateOfOrder = curTime;
 	}
 	
-	
 	//myInitialization(jobsCodeVec, machsCodeVec, jobsMap, machsMap);
 	vector<pair<Job*, ptime>> jobsWithDueDate;               // vector<pair<Job*, 截止时间>>
 	vector<pair<Job*, time_duration>> jobsWithTotalProTime;  // vector<pair<Job*, 总加工时间>>
 	vector<pair<Job*, time_duration>> jobsWithSlackTime;  // vector<pair<Job*, 松弛时间>>   松弛时间：job的剩余时间（当前时点距离交货期的时间）与该job所需的加工时间之差
-	for (auto& jobInfo : jobsMap)  // 遍历所有job，
+	for (auto& jobInfo : jobsMap)  // 遍历所有job，processTime，获取processTime
 	{
 		string curJobCode = jobInfo.first;
 		
@@ -829,10 +822,15 @@ void main()
 			ProcessTargets const& processTargets = (curJobP->m_proceTargets)[machIndex].second;
 			time_duration processTime = getProcessTime(machsMap[machInfoOfCurJob.first],curJobP, machIndex);
 			//time_duration processTime = curJobP->m_proceTimes[machIndex].second;
-			
-			curJobP->m_proceTimes.push_back(make_pair(machInfoOfCurJob, processTime));
-			sumOfProcessTime = sumOfProcessTime+ processTime;
-			machIndex++;
+			cout <<"processtT="<<to_iso_string(processTime)<< endl;
+			if(curJobP->m_proceTimes.size()> machIndex)
+				curJobP->m_proceTimes[machIndex]= make_pair((curJobP->m_proceTargets)[machIndex].first, processTime);
+			else
+				curJobP->m_proceTimes.insert(curJobP->m_proceTimes.begin() + machIndex,
+					make_pair(curJobP->m_proceTargets[machIndex].first, processTime));
+
+			sumOfProcessTime = sumOfProcessTime + processTime;
+			++machIndex;
 		}
 		
 		curJobP->m_totalProceTime = sumOfProcessTime;
@@ -855,7 +853,7 @@ void main()
 			cout << "Job code: " << curJobP->m_jobCode << "  SlackTime: " << timeDuration2Double(jobInfo.second)
 			<< " hours" << endl;
 		//cout << "Job code: " << curJobP->m_jobCode << "  DueTime: " << to_iso_extended_string(jobInfo.second)
-			//<< endl;
+		//<< " hours"<< endl;
 	};
 
 	cout << endl;
