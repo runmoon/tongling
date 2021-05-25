@@ -1,5 +1,5 @@
 #include<head.h>
-const double T_BellFurnace = 30.0;  // 单位:小时; 钟罩炉每炉30小时
+
 
 set<string> rollingMachSet{ "BD-S003","BD-S005","BD-S025","BD-S009","BD-S010","BD-S011" };  // 轧机组; getStatus()用
 // BD-S003	二辊可逆式热轧机; BD-S005	粗轧机; BD-S025	四辊中轧机; 
@@ -12,6 +12,9 @@ set<string> cut_StretchMachSet{ "BD-S018","BD-S015",
 
 set<string> washMachSet{ "BD-S012","BD-S013","BD-S014" };
 // BD-S012	1250清洗机列; BD-S013	650清洗机列; BD-S014	新650清洗机列; getStatus()用
+
+set<string> airFurnaceSet{ "BD-S024","BD-S007","BD-S008" };
+//BD-S024  WSP气垫炉;    BD-S007  1250气垫式退火炉组;    BD-S008  650气垫式退火炉组
 
 map<string, string> alloyGrade2Type{    // 由合金牌号（grade）查对应的合金种类（type）
 	make_pair("C1010", "copper"),
@@ -101,7 +104,8 @@ MYSQL_RES* QueryDatabase1(MYSQL* mysql, char* sql)
 bool isInRange(string _aRange, double _number)
 {
 	if (("null" == _aRange) ||("NULL" == _aRange) 
-		|| ("Null" == _aRange) || ("" == _aRange))
+		|| ("Null" == _aRange) || ("" == _aRange)
+		|| (_number<=0.0))
 		return true;
 	size_t site = _aRange.find(",", 0);
 	size_t len = _aRange.length();
@@ -138,10 +142,11 @@ bool isInRange(string _aRange, double _number)
 string getStatus(string machCode, Job* jobP, unsigned machIndex)
 {
 	pair<string, unsigned>& machs = (jobP->m_proceMachs)[machIndex];
-	if ("BD-S002" == machCode)  //是BD-S002  步进式加热炉，现在默认铸锭
+	if ("BD-S002" == machCode)  //是BD-S002  步进式加热炉，现在默认铸锭??？？
 		return "ingotting";
-	if ("BD-S007" == machCode) // 是BD-S007  1250气垫式退火炉组
+	if ("BD-S007" == machCode) // 是BD-S007  1250气垫式退火炉组??？？
 		return "semi_hard_state";
+	
 	if (rollingMachSet.count(machCode) > 0) //是轧机
 	{
 		if ("BD-S003" == machCode) // 是BD-S003	  二辊可逆式热轧机
@@ -177,6 +182,7 @@ string getStatus(string machCode, Job* jobP, unsigned machIndex)
 			return "";
 		return ""; // BD-S021	350纵剪?,BD-S018	1250横剪机组?	
 	}
+
 	if (washMachSet.count(machCode) > 0) //是清洗
 	{
 		if ("BD-S012" == machCode) // 是BD-S012  1250清洗机列
@@ -186,6 +192,7 @@ string getStatus(string machCode, Job* jobP, unsigned machIndex)
 		if ("BD-S014" == machCode)
 			return ""; // ?
 	}
+	
 	return "";
 }
 
@@ -197,14 +204,18 @@ time_duration getProcessTime(Mach* machP, Job * jobP, unsigned machIndex)
 	ProcessTargets const& processTargets = jobP->m_proceTargets[machIndex].second;  //??？？
 	double processT(0);
 	// bool isRollingMach(rollingMachSet.count(machP->m_machCode) > 0);
-	if ("BD-S006" == machP->m_machCode)  // 如果是钟罩炉
-		return double2timeDuration(T_BellFurnace);
+	if (CodeOfBellFurn == machP->m_machCode)  // 如果是钟罩炉
+		return double2timeDuration(T_Bell_Furn);
 
 	for (auto& cap : machP->m_capsOriginalInfo)
 	{
+		cout << "cap.m_width=" << cap.m_width << "processTargets.m_targetWeight=" << processTargets.m_targetWeight << endl;
+
 		if (!isInRange(cap.m_width, processTargets.m_targetWeight))
 			continue;
-		if (!isInRange(cap.m_thick, processTargets.m_targetWeight))
+		cout << "cap.m_thick=" << cap.m_thick << "processTargets.m_targetThick=" << processTargets.m_targetThick << endl;
+
+		if (!isInRange(cap.m_thick, processTargets.m_targetThick))
 			continue;
 		if ((cap.m_alloyType != alloyGrade2Type[jobP->m_alloyGrade])
 			&& ("general_alloy" != cap.m_alloyType)
@@ -214,6 +225,9 @@ time_duration getProcessTime(Mach* machP, Job * jobP, unsigned machIndex)
 			&& ("" != cap.m_alloyType))
 			continue;
 		string status = getStatus(machP->m_machCode, jobP, machIndex);
+
+		cout << "status=" << status << "cap.m_status=" << cap.m_status << endl;
+
 		if ((cap.m_status != status)
 			&& ("general_status" != cap.m_status)
 			&& ("null" != cap.m_status)
@@ -221,7 +235,7 @@ time_duration getProcessTime(Mach* machP, Job * jobP, unsigned machIndex)
 			&& ("NULL" != cap.m_status)
 			&& ("" != cap.m_status))
 			continue;
-		processT = stod(cap.m_processT);
+		processT = mystod(cap.m_processT.c_str());
 	}
 	if (0 == processT)
 		cout<<"Error with capacity! Cannot find a matched capacity of job '"
@@ -230,7 +244,6 @@ time_duration getProcessTime(Mach* machP, Job * jobP, unsigned machIndex)
 	//cout << "machCode=" << machP->m_machCode << "; jobCode="<<jobP->m_jobCode <<"; cap="<<processT<< endl;
 	return double2timeDuration(processT);
 };
-
 
 // batch组批
 void batch()
@@ -253,7 +266,7 @@ bool isNum(string str)
 };
 
 // string to double
-double mystod(char* str)
+double mystod(const char* str)
 {
 	if (str == NULL)
 	{
@@ -270,7 +283,7 @@ double mystod(char* str)
 }
 
 // string to int
-int mystoi(char* str)
+int mystoi(const char* str)
 {
 	if (str == NULL)
 	{
@@ -326,21 +339,281 @@ double timeDuration2Double(time_duration _timeDura)
 	return double(_timeDura.total_seconds()) / 3600;
 };
 
+// 钟罩炉，是否可以加入钟罩炉的某个timeWin
+bool canAddToTimeWin(string jobCode, TimeWin &timeWin, Mach_BellFurnace& curMachBell)
+{
+	if (curMachBell.m_RuleForFurnWithWidth.second.second == timeWin.first.size()) // 已经有3个了，不能插入
+		return false;
+	else if (curMachBell.m_RuleForFurnWithWidth.second.first == timeWin.first.size())  // 已经有2个了
+	{
+		for (auto& jobInfo: timeWin.first)
+		{
+			Job* jobP = jobInfo.first;
+			if ((jobP->m_finalTargets.m_targetWidth >= curMachBell.m_RuleForFurnWithWidth.first)//??？？job的宽度规格按哪个？
+				||(jobCode ==jobP->m_jobCode))  // 不能是job自己
+				return false;
+		}
+	}
+	return true;
+}
 
+// 把某工单排入某机器，返回插入时间窗和插入索引
+pair<unsigned, bool> preInsertJobToMach(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob, vector<TimeWin>& timeline, time_period& timeWinResult)
+{
+	time_duration& timeDuration = double2timeDuration(curMach.m_proceTimePerFurn);  //钟罩炉时间为30小时
+	//time_duration timeOfSwith = double2timeDuration(curMach.m_timeOfSwith);  // 开启新的一炉的转换时间
+	//准备时间和上一炉的加工完成时间，是否要记入转换时间，需要搞明白？？??
+	//   对job来讲，准备时间后不需要转换时间；对machine来讲，上一炉结束时间后需要转换时间！
 
-// 把某工单排入某机器
-bool  insertJobToMach(Job& curJob, Mach& curMach, unsigned machIndexOfJob)
+	unsigned IndexOfTimeWin(0);  // machine的时间线插入的索引
+	// using TimeWin = pair<vector<pair<Job*, unsigned>>, time_period>;  // pair< vector<pair<Job*, 该job第几次重入>>, job插入的时间窗>
+	
+	bool flag_NewFurn(false);  // 显示是否新开一炉
+	bool isInserted(false);
+	
+
+	ptime readyTimeForOrder;  // job可以在该机器上开始加工的时间
+	//time_period timeWinToInsert(curJob.m_startDateOfOrder, timeDuration);  //要插入的时间窗
+	if (0 == machIndexOfJob)  // 如果是job的第一个machine
+		readyTimeForOrder = curJob.m_startDateOfOrder;
+	else
+		readyTimeForOrder = (curJob.m_allocatedTimeWin.end() - 1)->second.end();
+
+	if (0 == timeline.size())  // 如果是machine上的第一个job
+	{
+		timeWinResult = time_period(readyTimeForOrder, timeDuration);
+		flag_NewFurn = true;  // 新开一炉
+		IndexOfTimeWin = 0;
+		isInserted = true;
+	}
+	else
+	{
+		// 遍历timeline
+		for (vector<TimeWin>::iterator timeInfo_iter = timeline.begin();
+			timeInfo_iter != timeline.end(); ++timeInfo_iter, ++IndexOfTimeWin)
+		{
+			ptime left_TimeWin = timeInfo_iter->second.begin();
+			ptime right_TimeWin = timeInfo_iter->second.last();
+
+			if (left_TimeWin < readyTimeForOrder + timeDuration)  // 可加工时间和时间窗开始时间之间一定放不下新的一炉
+			{
+				if ((readyTimeForOrder < left_TimeWin) && canAddToTimeWin(curJob.m_jobCode, *timeInfo_iter, curMach))
+				{
+					timeWinResult = timeInfo_iter->second;
+					flag_NewFurn = false; // 不新开一炉
+					isInserted = true;
+					if (curJob.m_jobCode == "9800257701-0-0")
+					{
+						cout << "curJob=" << curJob.m_jobCode << endl;
+						cout << "readyTimeForOrder=" << to_iso_extended_string(readyTimeForOrder) << endl;
+						cout << "left_TimeWin=" << to_iso_extended_string(left_TimeWin) << endl;
+					}
+
+					break;
+				}
+				continue;
+			}
+			
+			if (timeline.cbegin() == timeInfo_iter)  // 第一个time window
+			{
+				cout << "**************** " << endl;
+				timeWinResult = time_period(readyTimeForOrder, timeDuration);
+				flag_NewFurn = true;    // 新开一炉
+				isInserted = true;
+				break;
+			}
+			else
+			{
+				auto timeInfo_iter2 = timeInfo_iter - 1;
+				ptime right_Pre = timeInfo_iter2->second.end();
+				if ((readyTimeForOrder < right_Pre) && (right_Pre + timeDuration <= left_TimeWin))
+				{
+					timeWinResult = time_period(right_Pre, timeDuration);
+					flag_NewFurn = true;    // 新开一炉
+					isInserted = true;
+				}
+				else if ((readyTimeForOrder < right_Pre)&&(canAddToTimeWin(curJob.m_jobCode, *timeInfo_iter, curMach))
+					&&(readyTimeForOrder < left_TimeWin))
+				{
+					timeWinResult = timeInfo_iter->second;
+					flag_NewFurn = false;    // 不新开一炉
+					isInserted = true;
+				}
+				if (right_Pre <= readyTimeForOrder)
+				{
+					timeWinResult = time_period(readyTimeForOrder, timeDuration);
+					flag_NewFurn = true;    // 新开一炉
+					isInserted = true;
+				}
+			}
+		}  // END OF 遍历timeline
+
+		if (false == isInserted)
+		{
+			ptime rightWin = (timeline.end() - 1)->second.end();
+			timeWinResult = time_period((readyTimeForOrder<rightWin) ? rightWin : readyTimeForOrder, timeDuration);
+			flag_NewFurn = true;    // 新开一炉
+			isInserted = true;
+		}
+	}
+
+	cout << "curJob=" << curJob.m_jobCode <<"777777"<< endl;
+	cout << "timeWinResult=" << to_iso_extended_string(timeWinResult.begin())
+		<<"--" << to_iso_extended_string(timeWinResult.last()) << endl;
+	return make_pair(IndexOfTimeWin, flag_NewFurn);
+};
+
+// 把某工单排入钟罩炉的某个平行机
+bool  insertJob(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob)
 {
 	time_duration& timeDuration = curJob.m_proceTimes[machIndexOfJob].second;
-	if("BD-S006" ==curMach.m_machCode)
 
+	pair<unsigned, string> SchedulInfo;  // pair<时间窗位置, 显示是否新开一炉>  "newFurnace":新开一炉; "addToExist":新开一炉
+	
+	unsigned Index_parallelMach = 0;
+	unsigned Index_final = Index_parallelMach;
+	time_period timeWinFinal(curJob.m_startDateOfOrder, timeDuration);
+	pair<unsigned, bool> resultOfPreInsert(make_pair(-1,false));   // pair<TimeWin的位置, 是否要新开一炉>
+	pair<unsigned, bool> resultOfFinal(make_pair(-1, false));   // pair<TimeWin的位置, 是否要新开一炉>
+
+	cout << "size(m_numOfParallel) == "<< curMach.m_timeLines.size()<<endl;
+	for(auto &timeline:curMach.m_timeLines)
+	{ 
+		time_period timeWinResult(curJob.m_startDateOfOrder, timeDuration);
+		
+		resultOfPreInsert = preInsertJobToMach(curJob, curMach, machIndexOfJob, timeline, timeWinResult);
+		if (0 == Index_parallelMach)
+		{
+			timeWinFinal = timeWinResult;
+			resultOfFinal = resultOfPreInsert;
+		}	
+		if (timeWinFinal.begin() > timeWinResult.begin()) // 更新
+		{
+			timeWinFinal = timeWinResult;
+			resultOfFinal = resultOfPreInsert;
+			Index_final = Index_parallelMach;
+		}
+		++Index_parallelMach;
+	}
+	cout << "curJob=" << curJob.m_jobCode << "8888888" << endl;
+	cout << "timeWinResult=" << to_iso_extended_string(timeWinFinal.begin()) << endl;
+
+	curJob.m_curMachIndex = machIndexOfJob;
+	curJob.m_allocatedTimeWin.push_back(make_pair(curJob.m_proceMachs[machIndexOfJob], timeWinFinal));
+
+	vector<TimeWin> &timeLine = curMach.m_timeLines[Index_final];
+	unsigned num_reentry = curJob.m_proceMachs[machIndexOfJob].second;
+	map<Job*, unsigned> jobToInsert { make_pair(&curJob, num_reentry) };
+	
+	if (resultOfFinal.first < 0)
+		return false;
+
+	if (resultOfFinal.second) // 新开一炉
+		timeLine.insert(timeLine.begin() + resultOfFinal.first, make_pair(jobToInsert, timeWinFinal ));
+	else  // 加入已开的炉
 	{
-		cout << "machinecode=" << curMach.m_machCode << endl;
-		cout << "double2timeDuration(T_BellFurnace)=" << to_iso_string(timeDuration) << endl;
+		cout << "cccccccccsdsdsdsdsdsd" << endl;
+		timeLine[resultOfFinal.first].first.insert(make_pair(&curJob, num_reentry));
+	}
+	cout << "ewwwwwwwwwwwww" << endl;
+	//pair<map<Job*, unsigned>, time_period>;
+	return true;
+};
+
+// 把某工单排入气垫炉
+bool  insertJob(Job& curJob, Mach_AirFurnace& curMach, unsigned machIndexOfJob)
+
+{
+	time_duration& timeDuration = curJob.m_proceTimes[machIndexOfJob].second;
+
+	bool isInserted(false);
+	unsigned IndexOfTimeWin(0);  // machine的插入的索引
+
+	ptime readyTimeForOrder;  // job可以在该机器上开始加工的时间
+	time_period timeWinToInsert(curJob.m_startDateOfOrder, timeDuration);  //要插入的时间窗
+	if (0 == machIndexOfJob)  // 如果是job的第一个machine
+		readyTimeForOrder = curJob.m_startDateOfOrder;
+	else
+		readyTimeForOrder = (curJob.m_allocatedTimeWin.end() - 1)->second.end();
+
+	if (0 == curMach.m_allocatedTimeWin.size())  // 如果是machine上的第一个job
+	{
+		timeWinToInsert = time_period(readyTimeForOrder, timeDuration);
+		IndexOfTimeWin = 0;
+		isInserted = true;
+	}
+	else
+	{
+		// 遍历curMach.m_allocatedTimeWin
+		for (auto timeInfo_iter = curMach.m_allocatedTimeWin.begin(); timeInfo_iter != curMach.m_allocatedTimeWin.end(); ++timeInfo_iter, ++IndexOfTimeWin)
+		{
+			ptime left_TimeWin = timeInfo_iter->second.begin();
+			ptime right_TimeWin = timeInfo_iter->second.last();
+			if (left_TimeWin < readyTimeForOrder + timeDuration)  // 可加工时间和时间窗开始时间之间一定放不下
+				continue;
+
+			if (curMach.m_allocatedTimeWin.cbegin() == timeInfo_iter)  // 第一个time window
+			{
+				cout << "**************** " << endl;
+				timeWinToInsert = time_period(readyTimeForOrder, timeDuration);
+				isInserted = true;
+				break;
+			}
+			else
+			{
+				auto timeInfo_iter2 = timeInfo_iter - 1;
+				ptime right_Pre = timeInfo_iter2->second.end();
+				if ((readyTimeForOrder < right_Pre) && (right_Pre + timeDuration <= left_TimeWin))
+				{
+					timeWinToInsert = time_period(right_Pre, timeDuration);
+					isInserted = true;
+					break;
+				}
+				if (right_Pre <= readyTimeForOrder)
+				{
+					timeWinToInsert = time_period(readyTimeForOrder, timeDuration);
+					isInserted = true;
+					break;
+				}
+			}
+		}  // END OF 遍历curMach.m_allocatedTimeWin
+
+		if (false == isInserted)
+		{
+			ptime right_Pre = (curMach.m_allocatedTimeWin.end() - 1)->second.end();
+			timeWinToInsert = time_period(right_Pre > readyTimeForOrder ? right_Pre : readyTimeForOrder, timeDuration);
+			isInserted = true;
+		}
+	}
+	curJob.m_curMachIndex = machIndexOfJob;
+	curJob.m_allocatedTimeWin.push_back(make_pair(curJob.m_proceMachs[machIndexOfJob], timeWinToInsert));
+
+	curMach.m_allocatedTimeWin.insert(curMach.m_allocatedTimeWin.begin() + IndexOfTimeWin,
+		make_pair(make_pair(curJob.m_jobCode, curJob.m_proceMachs[machIndexOfJob].second), timeWinToInsert));
+	return true;
+};;
+
+// airFurnaceSet
+bool isSwitch(Job& curJob, Mach& curMach, unsigned machIndexOfJob)  // 是否需要切换
+{
+	if (airFurnaceSet.find(curJob.m_jobCode) != airFurnaceSet.end())  // 是气垫炉组的机器
+	{
+
 
 	}
+	return false;
+};
+
+// 把某工单排入某机器
+bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob)
+{
+	time_duration& timeDuration = curJob.m_proceTimes[machIndexOfJob].second;
+	//time_duration& swithT = double2timeDuration(curMach.m_timeOfSwith);  // 切换时间
+	//bool swith = isSwitch(curJob, curMach, machIndexOfJob);  // 是否需要切换
+	
+	int a = true * 3;
 	bool isInserted(false);
-	unsigned insertIndexOfMach(0);  // machine的插入的索引
+	unsigned IndexOfTimeWin(0);  // machine的插入的索引
 
 	ptime readyTimeForOrder;  // job可以在该机器上开始加工的时间
 	time_period timeWinToInsert(curJob.m_startDateOfOrder, timeDuration);  //要插入的时间窗
@@ -352,13 +625,13 @@ bool  insertJobToMach(Job& curJob, Mach& curMach, unsigned machIndexOfJob)
 	if (0 == curMach.m_allocatedTimeWin.size())  // 如果是machine上的第一个job
 	{
 		timeWinToInsert = time_period(readyTimeForOrder, timeDuration);
-		insertIndexOfMach = 0;
+		IndexOfTimeWin = 0;
 		isInserted = true;
 	}
 	else
 	{
 		// 遍历curMach.m_allocatedTimeWin
-		for (auto timeInfo_iter = curMach.m_allocatedTimeWin.begin(); timeInfo_iter != curMach.m_allocatedTimeWin.end(); ++timeInfo_iter, ++insertIndexOfMach)
+		for (auto timeInfo_iter = curMach.m_allocatedTimeWin.begin(); timeInfo_iter != curMach.m_allocatedTimeWin.end(); ++timeInfo_iter, ++IndexOfTimeWin)
 		{
 			ptime left_TimeWin = timeInfo_iter->second.begin();
 			ptime right_TimeWin = timeInfo_iter->second.last();
@@ -401,10 +674,11 @@ bool  insertJobToMach(Job& curJob, Mach& curMach, unsigned machIndexOfJob)
 	curJob.m_curMachIndex = machIndexOfJob;
 	curJob.m_allocatedTimeWin.push_back(make_pair(curJob.m_proceMachs[machIndexOfJob], timeWinToInsert));
 	
-	curMach.m_allocatedTimeWin.insert(curMach.m_allocatedTimeWin.begin() + insertIndexOfMach, 
+
+	curMach.m_allocatedTimeWin.insert(curMach.m_allocatedTimeWin.begin() + IndexOfTimeWin, 
 		make_pair(make_pair(curJob.m_jobCode, curJob.m_proceMachs[machIndexOfJob].second), timeWinToInsert));
 	return true;
-};
+};;
 
 //  调试用的初始化
 void myInitialization(vector<string> &jobsCodeVec, vector<string> &machsCodeVec, map<string, Job*> &jobsMap, map<string, Mach*> &machsMap)
@@ -505,7 +779,15 @@ void initializeCaps(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Ma
 		Mach* machP = machsMap[machCode];
 		
 		machP->m_capsOriginalInfo.push_back(cap);
-		
+		/*
+		cout << "row[0] = " << row[0] << endl;
+		cout << "row[1] = " << row[1] << endl;
+		cout << "row[2] = " << row[2] << endl;
+		cout << "row[3] = " << row[3] << endl;
+		cout << "row[4] = " << row[4] << endl;
+		cout << "row[5] = " << row[5] << endl;
+		cout << "row[6] = " << row[6] << endl;
+		*/
 		++i;
 		
 	}
@@ -632,10 +914,27 @@ void initialMachs(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach
 	{
 		// unit_id, name
 		// 重复读取行，并输出获取每行中字段的值，直到row为NULL
-		Mach* machP = new Mach;
-		machP->m_machCode = row[0];
-		machsCodeVec.push_back(machP->m_machCode);
-		machsMap[machP->m_machCode] = machP;
+		if (CodeOfBellFurn == row[0])  // 是钟罩炉
+		{
+			Mach_BellFurnace* machP = new Mach_BellFurnace();
+			machP->m_machCode = row[0];
+			machsCodeVec.push_back(machP->m_machCode);
+			machsMap[machP->m_machCode] = machP;
+		}
+		else if(airFurnaceSet.find(row[0])!= airFurnaceSet.end()) // 是气垫炉
+		{
+			Mach_AirFurnace* machP = new Mach_AirFurnace();
+			machP->m_machCode = row[0];
+			machsCodeVec.push_back(machP->m_machCode);
+			machsMap[machP->m_machCode] = machP;
+		}
+		else
+		{
+			Mach* machP = new Mach;
+			machP->m_machCode = row[0];
+			machsCodeVec.push_back(machP->m_machCode);
+			machsMap[machP->m_machCode] = machP;
+		}
 		++i;
 	}
 	cout << "There are " << i << " machines in total." << endl;
@@ -676,7 +975,6 @@ void initialMachs2(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mac
 	}
 	cout << "There are " << i << " machines in total." << endl;
 }
-
 
 // 获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
 pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap)  // get object value
@@ -724,6 +1022,7 @@ pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& 
 void printFinalRes(map<string, Job*> &jobsMap, map<string, Mach*> &machsMap)
 {
 	// 打印排程结果
+	/*
 	cout << endl;
 	for (auto& machInfo : machsMap)  // 遍历所有machine
 	{
@@ -737,6 +1036,41 @@ void printFinalRes(map<string, Job*> &jobsMap, map<string, Mach*> &machsMap)
 				<< "--" << to_iso_extended_string(timeWin.last()) << endl;
 		}
 		cout << endl;
+	};
+	*/
+
+	cout << endl;
+	for (auto& machInfo : machsMap)  // 遍历所有machine
+	{
+		if (CodeOfBellFurn == machInfo.first)
+		{
+			Mach_BellFurnace* curMach = static_cast<Mach_BellFurnace*>(machInfo.second);
+			cout << "MachCode---------" << curMach->m_machCode << endl;
+			unsigned i_timeline(0);
+			for (auto& timeline : curMach->m_timeLines)
+			{
+				cout << "   Number of time line: " << i_timeline<< endl;
+				for (auto& timeWinInfo : timeline)  // 遍历所有time_period
+				{
+					// using TimeWin = pair<map<Job*, unsigned>, time_period>;  // pair< map<Job*, 该job第几次重入>, job插入的时间窗>
+
+					time_period timeWin = timeWinInfo.second;
+					cout << "      "<<to_iso_extended_string(timeWin.begin())
+						<< "--" << to_iso_extended_string(timeWin.last())<<endl;
+					unsigned i_jobs(0);
+					for (auto& jobs : timeWinInfo.first)  // 遍历所有job
+					{
+						cout <<"                                      Number of jobs this period="<< i_jobs 
+							<< "  jobCode = " << (jobs.first)->m_jobCode << "; reentry = " << jobs.second << endl;;
+						++i_jobs;
+					}
+				}
+				++i_timeline;
+			}
+
+			cout << endl;
+		}
+
 	};
 	cout << "\n\n" << endl;
 	for (auto& jobInfo : jobsMap)  // 遍历所有job
@@ -755,7 +1089,6 @@ void printFinalRes(map<string, Job*> &jobsMap, map<string, Mach*> &machsMap)
 }
 
 
-
 void main()
 {
 	vector<string> jobsCodeVec;     // vector<job code>
@@ -770,7 +1103,7 @@ void main()
 	MYSQL_RES* res(NULL);   //这个结构代表返回行的一个查询结果集  
 	ConnectDatabase(mysql);
 
-	char* sqla = "select * from tlorderinformation";
+	char* sqla = "select * from tlorderinformation order by alloy_grade";
 	res = QueryDatabase1(mysql, sqla);
 	initializeJobs(res, jobsCodeVec, jobsMap);
 
@@ -796,11 +1129,12 @@ void main()
 		if (false)
 		{
 			cout << curjobcode << ": " << curJobP->m_dueDateOfOrderStr << endl;
-			cout << curjobcode << ": " << to_iso_string(curJobP->m_dueDateOfOrder) << endl;
+			cout << curjobcode << ": " << to_iso_string(curJobP->m_dueDateOfOrder) <<endl;
 		}
 		// 检查job的日期格式！！？？!!??
 		curJobP->m_startDateOfOrder = curTime;
 	}
+	
 	
 	//myInitialization(jobsCodeVec, machsCodeVec, jobsMap, machsMap);
 	vector<pair<Job*, ptime>> jobsWithDueDate;               // vector<pair<Job*, 截止时间>>
@@ -822,7 +1156,7 @@ void main()
 			ProcessTargets const& processTargets = (curJobP->m_proceTargets)[machIndex].second;
 			time_duration processTime = getProcessTime(machsMap[machInfoOfCurJob.first],curJobP, machIndex);
 			//time_duration processTime = curJobP->m_proceTimes[machIndex].second;
-			cout <<"processtT="<<to_iso_string(processTime)<< endl;
+			cout <<"2processtT="<<to_iso_string(processTime)<< endl;
 			if(curJobP->m_proceTimes.size()> machIndex)
 				curJobP->m_proceTimes[machIndex]= make_pair((curJobP->m_proceTargets)[machIndex].first, processTime);
 			else
@@ -840,32 +1174,52 @@ void main()
 		jobsWithTotalProTime.push_back(make_pair(curJobP, sumOfProcessTime));
 	}
 
+	
 	// 根据截止时间，总加工时间，松弛时间排序
 	sort(jobsWithDueDate.begin(), jobsWithDueDate.end(), myCmpBy_ptime);
 	sort(jobsWithTotalProTime.begin(), jobsWithTotalProTime.end(), myCmpBy_time_duration);
 	sort(jobsWithSlackTime.begin(), jobsWithSlackTime.end(), myCmpBy_time_duration);
-
-	for (auto& jobInfo : jobsWithSlackTime)  // 遍历所有job
+	
+	for (auto& jobInfo : jobsWithDueDate)  // 遍历所有job
 	//for (auto& jobInfo : jobsWithDueDate)  // 遍历所有job
 	{
 		Job* curJobP = jobInfo.first;
-		if(false)
-			cout << "Job code: " << curJobP->m_jobCode << "  SlackTime: " << timeDuration2Double(jobInfo.second)
-			<< " hours" << endl;
-		//cout << "Job code: " << curJobP->m_jobCode << "  DueTime: " << to_iso_extended_string(jobInfo.second)
-		//<< " hours"<< endl;
+		if(true)
+		{
+			//cout << "Job code: " << curJobP->m_jobCode << "  SlackTime: " << to_iso_extended_string(jobInfo.second)
+			//<< " hours" << endl;
+			cout << "Job code: " << curJobP->m_jobCode << "  DueTime: " << to_iso_extended_string(jobInfo.second)
+			<< " hours"<< endl;
+			cout << "  " << curJobP->m_alloyGrade << endl;
+		}
 	};
 
+	/*
 	cout << endl;
 	for (auto &jobInfo : jobsWithDueDate)
 	{
 		Job* curJobP = jobInfo.first;
-		// cout << "curJob: " << curJobP->m_jobCode << endl;
+		 cout << "curJob: " << curJobP->m_jobCode << endl;
 		unsigned machIndex(0);  // job的 machine
 		for (pair<string, unsigned>& machCodeOfCurJob : curJobP->m_proceMachs)   // 遍历某个job的所有machine
 		{
-			Mach& curMach = *machsMap[machCodeOfCurJob.first];
-			bool isSuccess = insertJobToMach(*curJobP, curMach, machIndex);
+			cout << "curMach: "<< machCodeOfCurJob.first << endl;
+			if (CodeOfBellFurn == machCodeOfCurJob.first)  // 是钟罩炉
+			{
+				Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machsMap[machCodeOfCurJob.first]);
+				bool isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			}
+			else if (airFurnaceSet.find(machCodeOfCurJob.first) == airFurnaceSet.end()) // 是气垫炉组中的机器
+			{
+				Mach_AirFurnace* curMachP = static_cast<Mach_AirFurnace*>(machsMap[machCodeOfCurJob.first]);
+				bool isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			}
+			else  //其他
+			{
+				Mach* curMachP = machsMap[machCodeOfCurJob.first];
+				bool isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			}
+
 			//cout << "curMach: " << curMach.m_machCode <<"\n"<< "isSuccess: " << isSuccess << endl;
 			machIndex++;
 		}
@@ -877,7 +1231,7 @@ void main()
 	// 获取目标值
 	pair<double, double> objectVals = getObjVals(jobsMap, machsMap);
 	cout << "<总延期时间(小时): " << objectVals.first<< "; 加工所有工件所需的时间长度(小时): " <<objectVals.second << endl;
-	
+	*/
 }
 
 

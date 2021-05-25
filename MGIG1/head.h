@@ -35,6 +35,10 @@ using namespace std;
 using namespace boost;
 using namespace boost::gregorian;  //日期形式
 using namespace boost::posix_time;
+const double T_Bell_Furn = 30.0;  // 单位:小时; （Bell Furnace）钟罩炉每炉30小时
+const int Num_Para_Bell = 5;  // 单位:小时; 钟罩炉共5个平行机(Parallel machine)
+
+const string CodeOfBellFurn = "BD-S006";  // 钟罩炉的代码MachCode
 
 
 // 加工目标类
@@ -80,7 +84,7 @@ public:
 
 	vector<pair<string, unsigned>>  m_proceMachs;     // 工序(机器)流程  vector<pair<mach代码, 本工序第几次重入>>
 	vector<pair<pair<string, unsigned>, ProcessTargets>>  m_proceTargets;  // 在每个工序(机器)上的加工目标，vector<pair<pair<mach代码, 本工序第几次重入>, 加工目标>>
-	vector<pair<pair<string, unsigned>, time_duration>>  m_proceTimes;   // 在每个工序(机器)上的加工时长，vector<pair<pair<mach代码, 本工序第几次重入>, 加工时长>>
+	vector<pair<pair<string, unsigned>, time_duration>>  m_proceTimes;     // 在每个工序(机器)上的加工时长，vector<pair<pair<mach代码, 本工序第几次重入>, 加工时长>>
 
 
 	time_duration m_totalProceTime;   // 该Job的总加工时长
@@ -101,8 +105,11 @@ struct Mach {
 	vector<pair<pair<string, unsigned>, time_period>>  m_allocatedTimeWin;   // 机器上的时间分配，vector<pair<pair<job代码, 第几重>, 加工时间窗>>
 	
 	vector<CapWithConditions> m_capsOriginalInfo;  // 机组的产能信息
+
+	double m_timeOfSwith;
 };
 
+using TimeWin = pair<map<Job*, unsigned>, time_period>;  // pair< map<Job*, 该job第几次重入>, job插入的时间窗>
 
 // 材料（牌号）
 struct m_alloyGrade
@@ -121,7 +128,6 @@ struct Mach_roughMill :public Mach {
 	//     1、工作辊遵循20卷更换一次原则。
 	//     2、换辊之后遵循先轧成品，后开坯以及 先宽后窄 的顺序。
 	//     3、开坯按照先合金、再紫铜最后黄铜的原则
-	double m_timeOfSwith = 0;  //
 	string m_machSubCode; // 机器代码，机器ID
 	
 };
@@ -133,12 +139,12 @@ struct Mach_roughMill :public Mach {
 struct Mach_walkingBeamFurnace : public Mach {
 	// 组批规则: 宽度，牌号
 	// 不同的宽度规格需要规格转换, 规格转化时间4工时
-	double m_timeOfSwith=4;  // 不同的宽度规格需要规格转换，规格转化时间4工时;
+	Mach_walkingBeamFurnace(){
+		this->m_timeOfSwith = 4;   // 不同的宽度规格需要规格转换，规格转化时间4工时;
+	}
 
 	//map<,>;  // 宽度 640,850,1040,640,850,1250
 };
-
-
 
 
 // 机器类-钟罩炉(钟罩式退火炉); 有1种, 5个平行机，对应同1个设备代码，可同时生产;
@@ -148,25 +154,44 @@ struct Mach_BellFurnace:public Mach{
 	// 组批规则: 宽度
 	//		850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
 	//      每炉工时约30小时左右
-	double m_timeOfSwith = 0;
-	string m_machSubCode; // 机器代码，机器ID; 一个代码对应一个平行机，共5个平行机
+	string m_machSubCode;      // 机器代码，机器ID; 一个代码对应一个平行机，共5个平行机
+	unsigned m_numOfParallel = Num_Para_Bell;
+	
+	pair<double, pair<int, int>> const m_RuleForFurnWithWidth = make_pair(850, make_pair(2, 3)); // pair<宽度850, pair<每炉个数, 每炉个数>> 组炉规则; -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
+	double m_proceTimePerFurn = T_Bell_Furn;  // 30
+	vector<vector<TimeWin>> m_timeLines;
 
-	pair<double, pair<int, int>> m_cap = make_pair(850, make_pair(2, 3)); // pair<850, pair<2, 3>> -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是3卷每炉
-	double m_proceTimePerFurnace;  // 30
+	Mach_BellFurnace() {
+		this->m_timeOfSwith = 0;
+		for (unsigned i = 0; i < this->m_numOfParallel; i++)
+			this->m_timeLines.push_back(vector<TimeWin>());
+	};
+
 };
 
+
+struct timeWinForBell
+{
+	Job* m_jobP;
+	unsigned m_reentry;  // 该job在该mach上是第几次重入
+	
+	unsigned m_numOfjobAllcated; // 几个job
+	time_period m_timewide;
+};
 
 // 机器类-气垫炉组(气垫式退火炉); 有3种, 每1种有1个机器
 //    设备代码及名称: 
 //         BD-S024 WSP气垫炉; 
 //         BD-S007 1250气垫式退火炉组; 
 //         BD-S008 650气垫式退火炉组
-struct Mach_airFurnace :public Mach {
+struct Mach_AirFurnace :public Mach {
 	// 组批规则: 牌号，规则转换5个小时
-	double m_timeOfSwith = 5;  // 不同的牌号需要规格转换，规格转化时间5小时
 	string m_machSubCode; // 机器代码，机器ID
 
 	pair<double, pair<int, int>> m_cap; // 规则转化5个小时
+	Mach_AirFurnace() {
+		this->m_timeOfSwith = 5;   // 不同的牌号需要规格转换，规格转化时间5小时
+	}
 };
 
 
@@ -177,8 +202,11 @@ struct Mach_airFurnace :public Mach {
 struct Mach_slit :public Mach {
 	// 组批规则: 出料宽度，出料内径
 	//     组批的次要原则: 厚度，状态（？?）
-	double m_timeOfSwith = 0;  //
+	  //
 	string m_machSubCode; // 机器代码，机器ID
+	Mach_slit() {
+		this->m_timeOfSwith = 0;
+	};
 
 
 };
@@ -191,7 +219,9 @@ struct Mach_cross :public Mach {
 	// 组批规则: 出料规格
 	double m_timeOfSwith = 0;  //
 	string m_machSubCode; // 机器代码，机器ID
-
+	Mach_cross() {
+		this->m_timeOfSwith = 0;
+	}
 };
 
 
@@ -199,7 +229,7 @@ struct Mach_cross :public Mach {
 bool isNum(string str);
 
 // string to double
-double mystod(char* str);
+double mystod(const char* str);
 
 // 小时数（double）转化为time_duration类型
 time_duration double2timeDuration(double _processT);
@@ -237,7 +267,7 @@ void initialMachs(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach
 void initialMachs2(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap);
 
 // 把某工单排入某机器
-bool  insertJobToMach(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
+bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
 
 // 获取加工时间；根据机组代码和加工目标得到在该机器上的加工时间
 time_duration getProcessTime(Mach* machP, Job* jobP, ProcessTargets const& processTargets, unsigned machIndex);
