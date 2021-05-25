@@ -1119,7 +1119,6 @@ void main()
 	res = QueryDatabase1(mysql, sqla);
 	initializeJobs2(res, jobsCodeVec, jobsMap);
 	
-	
 	// 打印
 	for (auto& jobInfo : jobsMap)  // 遍历所有job
 	{
