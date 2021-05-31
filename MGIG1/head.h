@@ -4,6 +4,10 @@
 
 #define _CRT_SECURE_NO_WARNINGS
 
+//以下是文件读入输出需要的头文件
+#include<fstream>
+#include<streambuf>
+
 #include<iostream>
 #include<vector>
 #include<utility>
@@ -16,13 +20,13 @@
 #include<stdlib.h>
 
 #include<sstream>
-
+// mysql相关
 #include<Windows.h>
 #include<WinSock.h>
 #include<mysql.h>
 
 #include <time.h>
-
+// boost时间相关
 #include<boost/timer.hpp>
 #include<boost/date_time.hpp>
 #include<boost/date_time/gregorian/gregorian.hpp>
@@ -44,11 +48,18 @@ const string CodeOfBellFurn = "BD-S006";  // 钟罩炉的代码MachCode
 // 加工目标类
 struct ProcessTargets
 {
-	double m_targetWeight;   //加工目标重量
-	double m_targetWidth;    //加工目标宽度
-	double m_targetThick;    //加工目标宽度
-	double m_targetLength;   //加工目标长度
-	double m_targetInnerDia;   //加工目标内径，internal diameter
+	double m_targetWidth = 0.0;    //加工目标宽度
+	double m_targetThick = 0.0;    //加工目标厚度
+	double m_targetWeight = 0.0;   //加工目标重量
+	double m_targetLength = 0.0;   //加工目标长度
+	double m_targetInnerDia = 0.0;   //加工目标内径，internal diameter
+	ProcessTargets() {};
+
+	ProcessTargets(double twid, double tthick) {
+		this->m_targetWidth = twid;
+		this->m_targetThick = tthick;
+	};
+	~ProcessTargets() {};
 };
 
 struct CapWithConditions
@@ -76,6 +87,7 @@ public:
 
 	ptime m_startDateOfOrder; // time point that can start processing 
 
+	ProcessTargets m_initialInfos;  // 加工目标
 	ProcessTargets m_finalTargets;  // 加工目标
 	
 	//vector<string>  m_proceMachs;     // 工序(机器)流程  vector<mach代码>
@@ -107,6 +119,9 @@ struct Mach {
 	vector<CapWithConditions> m_capsOriginalInfo;  // 机组的产能信息
 
 	double m_timeOfSwith;
+
+
+	virtual ~Mach() {};
 };
 
 using TimeWin = pair<map<Job*, unsigned>, time_period>;  // pair< map<Job*, 该job第几次重入>, job插入的时间窗>
@@ -129,7 +144,8 @@ struct Mach_roughMill :public Mach {
 	//     2、换辊之后遵循先轧成品，后开坯以及 先宽后窄 的顺序。
 	//     3、开坯按照先合金、再紫铜最后黄铜的原则
 	string m_machSubCode; // 机器代码，机器ID
-	
+
+	virtual ~Mach_roughMill() {};
 };
 
 
@@ -144,6 +160,8 @@ struct Mach_walkingBeamFurnace : public Mach {
 	}
 
 	//map<,>;  // 宽度 640,850,1040,640,850,1250
+
+	virtual ~Mach_walkingBeamFurnace() {};
 };
 
 
@@ -157,7 +175,7 @@ struct Mach_BellFurnace:public Mach{
 	string m_machSubCode;      // 机器代码，机器ID; 一个代码对应一个平行机，共5个平行机
 	unsigned m_numOfParallel = Num_Para_Bell;
 	
-	pair<double, pair<int, int>> const m_RuleForFurnWithWidth = make_pair(850, make_pair(2, 3)); // pair<宽度850, pair<每炉个数, 每炉个数>> 组炉规则; -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
+	pair<double, pair<int, int>> m_RuleForFurnWithWidth = make_pair(850, make_pair(2, 3)); // pair<宽度850, pair<每炉个数, 每炉个数>> 组炉规则; -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
 	double m_proceTimePerFurn = T_Bell_Furn;  // 30
 	vector<vector<TimeWin>> m_timeLines;
 
@@ -167,6 +185,7 @@ struct Mach_BellFurnace:public Mach{
 			this->m_timeLines.push_back(vector<TimeWin>());
 	};
 
+	virtual ~Mach_BellFurnace() {};
 };
 
 
@@ -192,6 +211,8 @@ struct Mach_AirFurnace :public Mach {
 	Mach_AirFurnace() {
 		this->m_timeOfSwith = 5;   // 不同的牌号需要规格转换，规格转化时间5小时
 	}
+
+	virtual ~Mach_AirFurnace() {};
 };
 
 
@@ -208,7 +229,7 @@ struct Mach_slit :public Mach {
 		this->m_timeOfSwith = 0;
 	};
 
-
+	virtual ~Mach_slit() {};
 };
 
 
@@ -222,6 +243,8 @@ struct Mach_cross :public Mach {
 	Mach_cross() {
 		this->m_timeOfSwith = 0;
 	}
+
+	virtual ~Mach_cross() {};
 };
 
 
