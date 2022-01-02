@@ -10,9 +10,11 @@
 
 #include<iostream>
 #include<vector>
+#include<list>
 #include<utility>
 #include<map>
 #include<set>
+#include<queue>
 //#include<ctime>
 #include <cstdlib> // Header file needed to use srand and rand
 #include<algorithm>
@@ -20,29 +22,40 @@
 #include<stdlib.h>
 
 #include<sstream>
+
 // mysql相关
 #include<Windows.h>
 #include<WinSock.h>
 #include<mysql.h>
 
 #include <time.h>
+
 // boost时间相关
 #include<boost/timer.hpp>
 #include<boost/date_time.hpp>
 #include<boost/date_time/gregorian/gregorian.hpp>
 #include<boost/date_time/posix_time/posix_time.hpp>
 
+#include<cstdlib>
+#include<ctime>
+
 #pragma comment(lib, "libmysql.lib")
-#pragma comment(lib,"wsock32.lib")
+#pragma comment(lib, "wsock32.lib")
 
 using namespace std;
 using namespace boost;
 using namespace boost::gregorian;  //日期形式
 using namespace boost::posix_time;
+
+
+// 钟罩炉
 const double T_Bell_Furn = 30.0;  // 单位:小时; （Bell Furnace）钟罩炉每炉30小时
 const int Num_Para_Bell = 5;  // 单位:小时; 钟罩炉共5个平行机(Parallel machine)
+const double T_waitOfFirstFurn = 0.0;  // 单位:小时; （Bell Furnace）钟罩炉开第一炉的等待时间 5.0
+const double T_toleranceOfNewFurn =20.0;  // 单位:小时; （Bell Furnace）钟罩炉开第一炉相较于插入已开炉的容忍时间
 
 const string CodeOfBellFurn = "BD-S006";  // 钟罩炉的代码MachCode
+
 
 
 // 加工目标类
@@ -87,7 +100,7 @@ public:
 
 	ptime m_startDateOfOrder; // time point that can start processing 
 
-	ProcessTargets m_initialInfos;  // 加工目标
+	ProcessTargets m_initialInfos;  // 初始信息
 	ProcessTargets m_finalTargets;  // 加工目标
 	
 	//vector<string>  m_proceMachs;     // 工序(机器)流程  vector<mach代码>
@@ -98,11 +111,15 @@ public:
 	vector<pair<pair<string, unsigned>, ProcessTargets>>  m_proceTargets;  // 在每个工序(机器)上的加工目标，vector<pair<pair<mach代码, 本工序第几次重入>, 加工目标>>
 	vector<pair<pair<string, unsigned>, time_duration>>  m_proceTimes;     // 在每个工序(机器)上的加工时长，vector<pair<pair<mach代码, 本工序第几次重入>, 加工时长>>
 
-
+	 
 	time_duration m_totalProceTime;   // 该Job的总加工时长
 
-	unsigned m_curMachIndex;    // 当前要加工的machine在m_proceMachs中的index
+	unsigned m_curMachIndex = 0;    // 当前要加工的machine在m_proceMachs中的index
 	vector<pair<pair<string, unsigned>, time_period>> m_allocatedTimeWin;    // 该job已经加工了的工序，在vector<pair<pair<mach代码, 第几重>, 加工时间窗>>
+	// vector<pair<pair<string, unsigned>, time_period>*> m_allocatedTimeWinsP;    // 指针，该job已经加工了的工序，在vector<pair<pair<mach代码, 第几重>, 加工时间窗>>
+	vector<pair<pair<string, unsigned>, time_period*>> m_allocatedTimeWinPs;    // 指针，该job已经加工了的工序，在vector<pair<pair<mach代码, 第几重>, 加工时间窗*>>
+	//vector<pair<pair<Mach*, unsigned>, unsigned>> m_allocatedTimeWinIndexs;    // 该job已经加工了的工序，在vector<pair<pair<mach指针, 第几个加工时间窗>, 第几次重入>>
+
 };
 
 // 机器类
@@ -114,25 +131,40 @@ struct Mach {
 	vector<pair<double, double> >          m_thickWindowsOfMach;      //机组可加工的厚度范围；对应机组小时产能
 	vector<double>                         m_hourCapacities;          //机组小时产能；
 
-	vector<pair<pair<string, unsigned>, time_period>>  m_allocatedTimeWin;   // 机器上的时间分配，vector<pair<pair<job代码, 第几重>, 加工时间窗>>
-	
+	list<pair<pair<string, unsigned>, time_period>>  m_allocatedTimeWin;   // 机器上的时间分配，vector<pair<pair<job代码, 第几重>, 加工时间窗>>
+	list<pair<pair<string, unsigned>, time_period*>>  m_allocatedTimeWinPs;   // 机器上的时间分配，vector<pair<pair<Job指针, 第几重>, 加工时间窗*>>
+
 	vector<CapWithConditions> m_capsOriginalInfo;  // 机组的产能信息
 
 	double m_timeOfSwith;
 
-
 	virtual ~Mach() {};
 };
 
-using TimeWin = pair<map<Job*, unsigned>, time_period>;  // pair< map<Job*, 该job第几次重入>, job插入的时间窗>
 
-// 材料（牌号）
-struct m_alloyGrade
-{
-	// 合金
-	map<string, set<string>> type2grade; // map<合金种类, set<合金牌号>>
-	map<string, string> grade2type;   // map<合金牌号, set<合金种类>>
+// 获取工单当前的宽度、厚度，长度，重量，内径
+double getCurWidth(Job* jobP, int machIndexOfJob);
+
+double getCurWidth(Job* jobP, string machCode, int reentry);
+
+double getCurThick(Job* jobP, int machIndexOfJob);
+
+double getCurLength(Job* jobP, int machIndexOfJob);
+
+double getCurWeight(Job* jobP, int machIndexOfJob);
+
+double getCurInnerDia(Job* jobP, int machIndexOfJob);
+
+
+
+// 钟罩炉的组批
+struct BellBatch {
+	string m_strAlloyGrade;
+	vector<pair<Job*, double>> m_jobsWithWidth;  // vector<pair<Job*, 宽度>>
+	bool isFull=false;
 };
+
+using TimeWin = pair<map<string, unsigned>, time_period>;  // pair< map<job代码, 该job第几次重入>, job插入的时间窗>
 
 
 // 机器类-粗轧机(粗轧机); 有1种, 每1种有1个机器
@@ -149,22 +181,6 @@ struct Mach_roughMill :public Mach {
 };
 
 
-// 机器类-步进炉(步进式加热炉); 有1种, 有1个机器
-//    设备代码及名称: 
-//         BD-S002 步进式加热炉
-struct Mach_walkingBeamFurnace : public Mach {
-	// 组批规则: 宽度，牌号
-	// 不同的宽度规格需要规格转换, 规格转化时间4工时
-	Mach_walkingBeamFurnace(){
-		this->m_timeOfSwith = 4;   // 不同的宽度规格需要规格转换，规格转化时间4工时;
-	}
-
-	//map<,>;  // 宽度 640,850,1040,640,850,1250
-
-	virtual ~Mach_walkingBeamFurnace() {};
-};
-
-
 // 机器类-钟罩炉(钟罩式退火炉); 有1种, 5个平行机，对应同1个设备代码，可同时生产;
 //    设备代码及名称: 
 //         BD-S006	钟罩式退火炉
@@ -175,28 +191,22 @@ struct Mach_BellFurnace:public Mach{
 	string m_machSubCode;      // 机器代码，机器ID; 一个代码对应一个平行机，共5个平行机
 	unsigned m_numOfParallel = Num_Para_Bell;
 	
-	pair<double, pair<int, int>> m_RuleForFurnWithWidth = make_pair(850, make_pair(2, 3)); // pair<宽度850, pair<每炉个数, 每炉个数>> 组炉规则; -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
+	static pair<double, pair<int, int>> m_RuleForFurnWithWidth; // pair<宽度850, pair<每炉个数2, 每炉个数3>> 组炉规则; -- 850以上2卷每炉，650系列（850以下）最多3卷/炉；混装也是2卷每炉
 	double m_proceTimePerFurn = T_Bell_Furn;  // 30
-	vector<vector<TimeWin>> m_timeLines;
+	double m_waitTofFirstFurn = T_waitOfFirstFurn; // 新开一炉的等待时间
+	double m_toleranceTofNewFurn = T_toleranceOfNewFurn; // 新开一炉的容忍时间
+
+	vector<list<TimeWin>> m_timeLines;
 
 	Mach_BellFurnace() {
 		this->m_timeOfSwith = 0;
 		for (unsigned i = 0; i < this->m_numOfParallel; i++)
-			this->m_timeLines.push_back(vector<TimeWin>());
+			this->m_timeLines.push_back(list<TimeWin>());
 	};
 
 	virtual ~Mach_BellFurnace() {};
 };
 
-
-struct timeWinForBell
-{
-	Job* m_jobP;
-	unsigned m_reentry;  // 该job在该mach上是第几次重入
-	
-	unsigned m_numOfjobAllcated; // 几个job
-	time_period m_timewide;
-};
 
 // 机器类-气垫炉组(气垫式退火炉); 有3种, 每1种有1个机器
 //    设备代码及名称: 
@@ -214,24 +224,7 @@ struct Mach_AirFurnace :public Mach {
 
 	virtual ~Mach_AirFurnace() {};
 };
-
-
-// 机器类-纵剪组; 有4种, 每1种有1个机器
-//     设备代码及名称: 
-//     BD-S016	1250纵剪; BD-S019 650薄纵剪
-//     BD-S020	650厚纵剪; BD-S021 350纵剪
-struct Mach_slit :public Mach {
-	// 组批规则: 出料宽度，出料内径
-	//     组批的次要原则: 厚度，状态（？?）
-	  //
-	string m_machSubCode; // 机器代码，机器ID
-	Mach_slit() {
-		this->m_timeOfSwith = 0;
-	};
-
-	virtual ~Mach_slit() {};
-};
-
+ 
 
 // 机器类-横剪组; 有1种, 每1种有1个机器
 //     设备代码及名称: 
@@ -248,17 +241,74 @@ struct Mach_cross :public Mach {
 };
 
 
+
+// 设定开始排产的时间，并转化成ptime格式
+ptime getCurTime();
+
+
+// 由合金牌号获取合金类型
+string getTypeFromGrade(const string& alloyGrade);
+
+
+// 获取工单当前的宽度、厚度，长度，重量，内径
+
+double getCurWidth(Job* jobP, int machIndexOfJob);
+
+double getCurWidth(Job* jobP, string machCode, int reentry);
+
+double getCurThick(Job* jobP, int machIndexOfJob);
+
+double getCurLength(Job* jobP, int machIndexOfJob);
+
+double getCurWeight(Job* jobP, int machIndexOfJob);
+
+double getCurInnerDia(Job* jobP, int machIndexOfJob);
+
+
+
+// --------MySQL数据库交互--------
+
+// 初始化设置，连接mysql数据库
+bool ConnectDatabase(MYSQL* mysql);
+
+// 查询数据库并返回查询结果
+MYSQL_RES* QueryDatabase1(MYSQL* mysql, char* sql);
+
+// 向数据库插入数据，并返回插入是否成功
+bool InsertDatabase1(MYSQL* mysql, char* sql);
+
+// --------END OF--MySQL数据库交互--------
+
+
+
+// --------产能解析相关--------
+
+// 判断_number是否在_aRange(格式为"[0.1,3.4]")的范围内
+bool isInRange(string _aRange, double _number);
+
+// 获取job在当前mach上的status，以便查找产能
+string getStatus(string machCode, Job* jobP, unsigned machIndex);
+
+// 获取加工时间； 根据mach和job得到job在该mach上的加工时间
+time_duration getProcessTime(Mach* machP, Job* jobP, unsigned machIndex);
+
+// batch组批
+void batch();
+
 // 判断字符串是否是数字
 bool isNum(string str);
 
 // string to double
 double mystod(const char* str);
 
-// 小时数（double）转化为time_duration类型
-time_duration double2timeDuration(double _processT);
+// string to int
+int mystoi(const char* str);
 
-// time_duration类型转化为小时数（double）
-double timeDuration2Double(time_duration _timeDura);
+// --------END OF--产能解析相关--------
+
+
+
+// --------时间相关--------
 
 // 定义比较pair<Job*, ptime>
 bool myCmpBy_ptime(pair<Job*, ptime> _a, pair<Job*, ptime> _b);
@@ -266,41 +316,213 @@ bool myCmpBy_ptime(pair<Job*, ptime> _a, pair<Job*, ptime> _b);
 // 定义比较pair<Job*, time_duration>
 bool myCmpBy_time_duration(pair<Job*, time_duration> _a, pair<Job*, time_duration> _b);
 
+// 小时数（double）转化为time_duration类型
+time_duration double2timeDuration(double _processT);
+
+// time_duration类型转化为小时数（double）
+double timeDuration2Double(time_duration _timeDura);
+
+// --------END OF--时间相关--------
 
 
-// 连接mysql数据库
-bool ConnectDatabase(MYSQL* mysql);
 
-// 查询数据库并返回查询结果
-MYSQL_RES* QueryDatabase1(MYSQL* mysql, char* sql);
+// --------排产，把某工单排入某机器的空闲时间--------
 
-// 调试用的初始化
+// 把某工单排入某机器
+bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
+
+// 把某工单排入某个气垫炉
+bool  insertJob(Job& curJob, Mach_AirFurnace& curMach, unsigned machIndexOfJob, map<string, Job*>& jobsMap);
+
+// 把某工单排入钟罩炉的某个平行机
+bool  insertJob(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob, map<string, Job*>& jobsMap);
+
+// 把某工单排入钟罩炉的某个平行机
+bool  insertJob(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob, bool yes, map<string, Job*> jobsMap);
+
+// 把某工单排入钟罩炉的某平行机，返回插入时间窗和插入索引
+pair<unsigned, bool> preInsertJobToMachWithPreBatch(ptime readyTimeForOrder, Mach_BellFurnace& curMach, list<TimeWin>& timeline, time_period& timeWinResult);
+
+// 把某工单排入钟罩炉
+bool  insertJobToBellFurnWithPreBatch(vector<pair<Job*, int>>& curBatch, ptime readyTimeForOrder, Mach_BellFurnace& curMach);
+
+// 把某工单排入钟罩炉的某个平行机,先组好钟罩炉的批次
+int  insertJob(Job& curJob, Mach_BellFurnace& curMach, vector<vector<pair<Job*, int>>>& batchOfBell, map<string, Mach*>& machsMapLocal);
+
+// 钟罩炉，是否可以加入钟罩炉的某个timeWin
+bool canAddToTimeWin(Job* curJobP, unsigned machIndexOfJob, TimeWin& timeWin, map<string, Job*> jobsMap);
+
+// 预排入钟罩炉工序，把某工单排入钟罩炉的某平行机，返回插入时间窗和插入索引
+pair<unsigned, bool> preInsertJobToMach(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob, list<TimeWin>& timeline, time_period& timeWinResult, map<string, Job*>& jobsMap);
+
+// 对于气垫炉，检查是否需要规格切换（根据前后工件的牌号是否相同来判断）airFurnaceSet
+bool getIsSwitch(Job& curJob, Mach& curMach, Job& otherJob);
+
+// --------END OF--排产，把某工单排入某机器的空闲时间--------
+
+
+
+// --------初始化相关，初始化Job和Machine--------
+
+//  测试--调试用的初始化
 void myInitialization(vector<string>& jobsCodeVec, vector<string>& machsCodeVec, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
-// 数据库读取工单信息并初始化
+// 初始化产能——根据数据库读入的结果初始化机组产能信息
+void initializeCaps(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap);
+
+// 读入工单信息——根据数据库读入的结果初始化工单信息
 void initializeJobs(MYSQL_RES* res, vector<string>& jobsCodeVec, map<string, Job*>& jobsMap);
 
 // 初始化工单——完善工单信息（加工目标和加工机器）
 void initializeJobs2(MYSQL_RES* res, vector<string>& jobsCodeVec, map<string, Job*>& jobsMap);
 
-// 数据库读取机器信息并初始化
+// 初始化机器——根据数据库读入的结果初始化机器信息
 void initialMachs(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap);
 
 // 初始化机器信息
 void initialMachs2(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mach*>& machsMap);
 
-// 把某工单排入某机器
-bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
 
-// 获取加工时间；根据机组代码和加工目标得到在该机器上的加工时间
-time_duration getProcessTime(Mach* machP, Job* jobP, ProcessTargets const& processTargets, unsigned machIndex);
 
-// 获取目标函数值
+// 查看制程
+void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// 初始化不同的job vector，处理时间，松弛时间，截止时间
+void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
+	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
+// 初始化
+void initialJobsBatch(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<string>& jobsCodeVec
+	, map<string, vector<Job*>>& jobsWithBell, map<string, pair<Job*, int>>& jobsWithBells, vector<BellBatch*>& jobsBatch);
+
+// 打印钟罩炉工序统计个数
+void printBellCount(map<string, Job*>& jobsMap);
+
+// 打印交期、处理时间、松弛时间
+void printDueProSlackTime(vector<pair<Job*, ptime>>& jobsWithDueDate
+	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
+// --------END OF--初始化相关，初始化Job和Machine--------
+
+
+
+// --------获取目标函数值相关--------
+
+// 获取makespan目标函数值
+double getMakespan(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// 获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
 pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// --------END OF--获取目标函数值相关--------
+
+
+
+// --------求解相关--------
+
+// NEH方法
+void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
+	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
+// GA（遗传）方法
+void GA_Method(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// --------END OF--求解相关--------
+
+
+
+// --------GA获取初始解相关--------
+
+// 按照已排的开始加工时间，对job进行排序
+bool compareJobPPtime(pair<pair<Job*, int>, ptime> left, pair<pair<Job*, int>, ptime> right);
+
+// 排产，获取初始排产结果
+pair<double, double> scheduleByJobOrderForGA(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, MYSQL* mysql, bool isPrint = true);
+
+// 排入气垫炉之前的工序，气垫炉中间的工序不排；最后一个工序是纵横剪的，则最后一个工序不排
+pair<double, double> scheduleByJobOrderForGA_BefAir(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, MYSQL* mysql, bool isPrint = true);
+
+// 获取GA的编码信息
+void getCodeInfoOfGA_Air(vector<pair<string, Job*>>& jobOrder, vector<pair<Job*, pair<int, int>>>& codeInfoOfGA);
+
+void getCodeInfoOfGA_All(vector<pair<string, Job*>>& jobOrder, vector<pair<Job*, pair<int, int>>>& codeInfoOfGA);
+
+// --------END OF——GA获取初始解相关--------
+
+
+
+// --------结果输出相关，输出到控制台和CSV文件--------
 
 // 打印最终排程结果
 void printFinalRes(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
+// 打印最终排程结果
+void printFinalRes2(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// 打印最终排程结果
+void writeToCSV(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
+// 打印最终排程结果
+void writeToCSV(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql);
+
+// --------END OF--结果输出相关，输出到控制台和CSV文件--------
+
+
+
+// --------排产主函数相关，一个一个排入每个工序--------
+
+pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, MYSQL* mysql, bool isPrint = true);
+
+// 先排钟罩炉的第一炉
+pair<double, double> scheduleByJobOrder2(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, vector<pair<string, Job*>> jobWithBell, int lastJobWithBell, bool isPrint);
+
+// 每个工序遍历位置，进行插入
+double scheduleByJobOrder3(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapLocal, map<string, Mach*>& machsMapLocal, MYSQL* mysql, bool isPrint);
+
+// 钟罩炉先组好批次
+pair<double, double> scheduleByJobOrder4(vector<pair<string, Job*>>& jobOrder,
+	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, vector<vector<pair<Job*, int>>>& batchOfBell, MYSQL* mysql, bool isPrint);
+
+void moveTheFollowedTimeWin(map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, Mach* curMachP, int IndexOfTimeWin);
+
+// 同步m_allocatedTimeWinPs和m_allocatedTimeWin
+void syncTimeWinANDTimeWinPs(map<string, Mach*>& machsMapTemp);
+
+// --------END OF--排产主函数相关，一个一个排入每个工--------
+
+
+
+// --------迭代排产相关，拷贝job或machine--------
+
+// 拷贝Job--把jobOrder中的所有job拷贝一下，放入到jobsMapTemp中
+void initJobsTemp(map<string, Job*>& jobsMapTemp, vector<pair<string, Job*>>& jobOrderTemp, vector<pair<string, Job*>>& jobOrder);
+
+// 拷贝machine--把machsMap中的所有machine拷贝一下，放入到machsMapTemp中
+void initMachsMapTemp(map<string, Mach*>& machsMapTemp, map<string, Mach*>& machsMap);
+
+// 拷贝排产时间窗--把jobOrderOrig中的job的排产时间窗拷贝给jobOrder中的job
+void resetJobsTemp(vector<pair<string, Job*>>& jobOrder, vector<pair<string, Job*>>& jobOrderOrig);
+
+// 拷贝排产时间窗--把machsMapOrig中的job的排产时间窗拷贝给machsMap中的machine
+void resetMachsMapTemp(map<string, Mach*>& machsMap, map<string, Mach*>& machsMapOrig);
+
+// 简单拷贝machine
+void reInitMachsMapTemp(map<string, Mach*>& machsMapTemp, map<string, Mach*>& machsMap);
+
+// --------END OF--迭代排产相关，拷贝job或machine--------
+
+
+
+// --------其他--------
+
+pair<Job*, Job*> splitJob(Job* jobP, int splitPosition);
+
+// --------其他结束--------
 
 
 

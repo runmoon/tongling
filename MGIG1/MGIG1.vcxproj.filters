@@ -18,9 +18,15 @@
     <ClCompile Include="source.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="GA.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="head.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="GA.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
