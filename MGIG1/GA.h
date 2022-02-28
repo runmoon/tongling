@@ -71,26 +71,34 @@ public:
 	void mutationOfPop_JobTardiness();
 
 	// 邻域方式--翻转部分片段
-	void  getNeighborByReverse(Chromosome* chromP, const int totalLenOfGACode);
+	static void getNeighborByReverse(Chromosome* chromP, const int totalLenOfGACode);
 
 	// 邻域方式--交换部分片段获取新个体
-	void  getNeighborByExchangeSub(Chromosome* chromP, const int totalLenOfGACode);
+	static void getNeighborByExchangeSub(Chromosome* chromP, const int totalLenOfGACode);
 
 	// 邻域方式--截取一段，随机找一位置，再插入
-	void  getNeighborByReinsertSub(Chromosome* chromP, const int totalLenOfGACode);
+	static void getNeighborByReinsertSub(Chromosome* chromP, const int totalLenOfGACode);
 
 	// 邻域方式--交换两个位置
-	void  getNeighborByExchangeTwo(Chromosome* chromP, const int totalLenOfGACode);
+	static void getNeighborByExchangeTwo(Chromosome* chromP, const int totalLenOfGACode);
 
 	// 邻域方式--抽取一个，再插入
-	void  getNeighborByReinsertOne(Chromosome* chromP, const int totalLenOfGACode);
+	static void getNeighborByReinsertOne(Chromosome* chromP, const int totalLenOfGACode);
 
 
 	void getNewChromeToNeighbor(Chromosome* chromP, const int totalLenOfGACode);
 
-	void localSearchForCurChrome(Chromosome* chromP, const int maxIter);
+	// 对一个染色体做局部搜索
+	static void localSearchForCurChrome_Parallel(Chromosome* chromP, GeneticAlgorithm* populationP, const int maxIter);
+	
+	// 对一个染色体做局部搜索
+	void localSearchForCurChrome(Chromosome* chromP, GeneticAlgorithm* populationP, const int maxIter);
+	//static void localSearchForCurChrome(Chromosome* chromP, const int maxIter);
 
 	void localSearch();
+
+	void localSearch_Parallel();
+
 
 	void getObjValForChilds();
 
@@ -152,6 +160,9 @@ pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, ma
 
 // 获取染色体的目标函数值
 pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorithm* populationP, bool isPrint);
+
+// 获取染色体的目标函数值
+pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, GeneticAlgorithm* populationP, bool isPrint);
 
 // --------GA获取目标函数值相关--------
 

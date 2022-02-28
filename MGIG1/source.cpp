@@ -436,13 +436,15 @@ time_duration getProcessTime(Mach* machP, Job* jobP, unsigned machIndex)
 		cout << "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" << endl;
 		cout << "    machCode=" <<machP->m_machCode << endl;
 		cout << "    m_targetWeight=" <<processTargets.m_targetWeight << endl;
-		cout << "    m_targetWeight="<<processTargets.m_targetThick << endl;
+		cout << "    m_targetThick="<<processTargets.m_targetThick << endl;
+		cout << "    m_targetWidth=" << processTargets.m_targetWidth << endl;
 		cout << "    m_alloyType="<<jobP->m_alloyType << endl;
 		cout << "    status="<<getStatus(machP->m_machCode, jobP, machIndex) << endl;
 	}
 
 	//std::cout << "machCode=" << machP->m_machCode << "; jobCode="<<jobP->m_jobCode <<"; cap="<<processT<< std::endl;
 	return double2timeDuration(processT);
+	// return double2timeDuration(processT*2);
 };
 
 // batch组批
@@ -1387,6 +1389,7 @@ void initializeCaps(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Ma
 		Mach* machP = machsMap[machCode];
 
 		machP->m_capsOriginalInfo.push_back(cap);
+
 		/*
 		std::cout << "row[0] = " << row[0] << std::endl;
 		std::cout << "row[1] = " << row[1] << std::endl;
@@ -1667,7 +1670,7 @@ void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) 
 	cout << "ordernum=" << jobsMap.size() << endl; // order个数
 }
 
-// 初始化不同的job vector，处理时间，松弛时间，截止时间
+// 获取job各个工序处理时间，并初始化不同的job vector，每个工序的处理时间，总加工时间，松弛时间，截止时间
 void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
 	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime) {
 
@@ -1982,11 +1985,82 @@ pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& 
 	return make_pair(totalDueTime, makeSpan);
 };
 
+// 获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>，还有每个job的脱期时长
+pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, map<Job*, double>& jobTardiness)  // get object value
+{
+	double totalDueTime(0);  // 总延期时间（小时）
+	ptime timeOfStart;       // 开始排程的时间点
+	ptime timeOfCompletion;  // 所有工件加工完的时间点
+	double makeSpan(0);      // 加工所有工件所需的时间长度（小时）
+	int i_numOfJob(0);
+	for (auto& jobInfo : jobsMap)  // 遍历所有job
+	{
+		Job* curJobP = jobInfo.second;
+		if (0 == curJobP->m_allocatedTimeWin.size())
+			continue;
+		time_period lastTimeWin = (curJobP->m_allocatedTimeWin.end() - 1)->second;
+		ptime dueDate = curJobP->m_dueDateOfOrder;
+		double delayTime = timeDuration2Double(lastTimeWin.last() - dueDate);
+		delayTime = delayTime >= 0 ? delayTime : 0;
+		//cout<<"delayTime="<< delayTime <<endl;
+		totalDueTime += delayTime;
+		if (0 == i_numOfJob)
+		{
+			timeOfStart = curJobP->m_startDateOfOrder;
+			timeOfCompletion = lastTimeWin.last();
+			//cout << "timeOfCompletion_or=" << to_iso_extended_string(timeOfCompletion) << endl;
+			//cout << "timeOfStart_or=" << to_iso_extended_string(timeOfStart) << endl;
+		}
+		else
+		{
+			if (timeOfCompletion < lastTimeWin.last())
+				timeOfCompletion = lastTimeWin.last();
+			if ((curJobP->m_startDateOfOrder) < timeOfStart)
+				timeOfStart = curJobP->m_startDateOfOrder;
+		}
+		jobTardiness.emplace(make_pair(curJobP, delayTime));
+		i_numOfJob++;
+		//std::cout << "delay time of "<<curJobP->m_jobCode << " is: " << delayTime<<std::endl;
+	}
+
+	//cout<< "timeOfCompletion=" <<to_iso_extended_string(timeOfCompletion)<<endl;
+	//cout<< "timeOfStart=" << to_iso_extended_string(timeOfStart) << endl;
+
+	makeSpan = timeDuration2Double(timeOfCompletion - timeOfStart);
+	//std::cout << "totalDueTime=　" << totalDueTime << std::endl;
+	//std::cout << "makeSpan = " << makeSpan << std::endl;
+	//std::cout << std::endl;
+	return make_pair(totalDueTime, makeSpan);
+};
+
 // --------END OF--获取目标函数值相关--------
 
 
 
 // --------求解方法相关--------
+
+// 按规则排序
+void rule_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime) 
+{
+	vector<pair<string, Job*>> jobOrder;
+
+	// for (int i = jobsWithTotalProTime.size() -1; i >= 0; --i) 
+	for (int i = 0; i < jobsWithSlackTime.size(); ++i)
+	//for (int i = 0; i < jobsWithDueDate.size(); ++i)
+	//for (int i = 0; i < jobsWithTotalProTime.size(); ++i)
+	{
+		//Job* curJobP = jobsWithTotalProTime[i].first;
+		Job* curJobP = jobsWithSlackTime[i].first;
+		//Job* curJobP = jobsWithDueDate[i].first;
+		//if(curJobP->)
+		jobOrder.push_back(make_pair(curJobP->m_jobCode, curJobP));
+	}
+
+	pair<double, double> objectVals = scheduleByJobOrder(jobOrder, jobsMap, machsMap, mysql, false);
+
+	cout << "objectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
+}
 
 // NEH方法
 void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql, 
@@ -1994,16 +2068,13 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 {
 	vector<pair<string, Job*>> jobOrder;
 	//jobOrder.push_back(make_pair( (jobsWithTotalProTime.end() - 1)->first->m_jobCode, (jobsWithTotalProTime.end() - 1)->first) );
-	//jobOrder.push_back(make_pair( (jobsWithTotalProTime.end() - 2)->first->m_jobCode, (jobsWithTotalProTime.end() - 2)->first) );
-
 	jobOrder.push_back(make_pair((jobsWithSlackTime.begin()->first)->m_jobCode, jobsWithSlackTime.begin()->first));
-	//jobOrder.push_back(make_pair((jobsWithSlackTime.begin() + 1)->first->m_jobCode, (jobsWithSlackTime.begin() + 1)->first));
 
 	//for (unsigned i = 2; i < 30; ++i)  // 一个一个地放入job
 	//unsigned i(-1);
 	//for (auto& jobInfo: jobsMap)  // 一个一个地放入job
 	for (int i = 1; i < jobsWithSlackTime.size(); ++i)  // 一个一个地放入job
-	//for (int i = jobsWithTotalProTime.size() - 3; i >= 0; --i)
+	//for (int i = jobsWithTotalProTime.size() - 2; i >= 0; --i)
 	{
 
 		//Job* curJobP = jobInfo.second;
@@ -2015,8 +2086,8 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 		//}
 
 		cout << "i=" << i << endl;
-		//Job* curJobP = jobsWithSlackTime[i].first;
-		Job* curJobP = jobsWithTotalProTime[i].first;
+		Job* curJobP = jobsWithSlackTime[i].first;
+		//Job* curJobP = jobsWithTotalProTime[i].first;
 		cout << "curJobP->m_jobCode=" << curJobP->m_jobCode << "  i=" << i << endl;
 
 		unsigned bestPosition(0);
@@ -2030,7 +2101,6 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 			map<string, Mach*> machsMapTemp;
 			//if (j_insertPosition >= 80 ) cout << "insertPostion=" << j_insertPosition << endl;
 
-			cout << "  j_insertPosition=" << j_insertPosition << endl;
 			initJobsTemp(jobsMapInit, jobOrderTemp, jobOrder);
 			initMachsMapTemp(machsMapTemp, machsMap);
 
@@ -2040,11 +2110,9 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 			*curjobP_copy = *curJobP; //0205782740-0-0
 			jobOrderTemp.insert(jobOrderTemp.begin() + j_insertPosition, make_pair(curjobP_copy->m_jobCode, curjobP_copy));
 			jobsMapInit.insert(make_pair(curjobP_copy->m_jobCode, curjobP_copy));
-
-			int isp = 0;
-			if (j_insertPosition >= 105) isp = 1;
-			pair<double, double> objectVals = scheduleByJobOrder(jobOrderTemp, jobsMapInit, machsMapTemp, mysql, isp);
-			//if (j_insertPosition >= 80) cout << "llllllllllll" << endl;
+			                                    
+			pair<double, double> objectVals = scheduleByJobOrder(jobOrderTemp, jobsMapInit, machsMapTemp, mysql, false);
+			
 			if (0 == j_insertPosition) bestObjectVals = objectVals;
 			else if ((objectVals.first) < (bestObjectVals.first))  // else if (objectVals.first < bestObjectVals.first)
 			{
@@ -2064,7 +2132,8 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 	initJobsTemp(jobsMapInit, jobOrderTemp, jobOrder);
 	initMachsMapTemp(machsMapTemp, machsMap);
 
-	pair<double, double> objectVals = scheduleByJobOrder(jobOrderTemp, jobsMapInit, machsMapTemp, mysql, true);
+	pair<double, double> objectVals = scheduleByJobOrder(jobOrderTemp, jobsMapInit, machsMapTemp, mysql, false);
+	cout << "objectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
 }
 
 // GA（遗传）方法
@@ -2141,7 +2210,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 
 
 	// 初始化种群
-	GeneticAlgorithm* populationP = new GeneticAlgorithm(jobOrder.size(), 150, 200, totalLenOfGACode);
+	GeneticAlgorithm* populationP = new GeneticAlgorithm(jobOrder.size(), 150, 3, totalLenOfGACode);
 	populationP->initializePopulation(chromPInit, chromPInit2);                             // 初始化种群
 	populationP->initializeInfoOfBef(&jobOrderBef, &jobsMapBef, &machsMapBef);     // 初始化种群
 
@@ -2209,7 +2278,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	cout << endl; cout << endl;
 	cout << " initialObjVal=" << populationP->m_popPool[10]->objectValues.second << endl;
 
-	populationP->localSearchForCurChrome(populationP->m_popPool[10], 500);
+	populationP->localSearchForCurChrome(populationP->m_popPool[10], populationP, 500);
 
 	cout << endl; cout << endl;
 	for (int j = 0; j < populationP->m_popPool[10]->code.size(); ++j) {
@@ -2838,6 +2907,7 @@ pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
 		}
 	}
 
+
 	// 打印最终排程结果
 	if (isPrint) printFinalRes(jobsMapTemp, machsMapTemp);
 	// 输出到CSV文件
@@ -2847,10 +2917,16 @@ pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
 	//if (jobOrder.size() >= 80) std::cout << "mmmmmmmmmmmmmm" << endl;
 
 	// 获取目标值
-	pair<double, double> objectVals = getObjVals(jobsMapTemp, machsMapTemp);
-	//std::cout << "总延期时间(小时): " << objectVals.first << "; 加工所有工件所需的时间长度(小时): " << objectVals.second << std::endl;
+	//pair<double, double> objectVals = getObjVals(jobsMapTemp, machsMapTemp);
+	map<Job*, double> jobTardiness;
+	pair<double, double> objectVals = getObjValsWithTardiness(jobsMapTemp, machsMapTemp, jobTardiness);
+	cout<<" Tardiness of jobs:"<<endl;
+	for (auto& ele:jobTardiness) {
+		Job* jobP = ele.first;
+		cout << "  "<<jobP->m_jobCode << "  tardiness = " << ele.second<< endl;
+	}
 
-	//if (jobOrder.size() >= 80)  std::cout << "aaaaaaaaaaaaaaaaaaaaa" << endl;
+	//std::cout << "总延期时间(小时): " << objectVals.first << "; 加工所有工件所需的时间长度(小时): " << objectVals.second << std::endl;
 
 	for (auto& jobInfo : jobsMapTemp) delete jobInfo.second;
 	for (auto& machInfo : machsMapTemp) delete machInfo.second;
@@ -3912,6 +3988,7 @@ void main()
 	// 初始化不同的job vector，处理时间，松弛时间，截止时间
 	initialJobVecs(jobsMap, machsMap, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
+
 	// 根据截止时间，总加工时间，松弛时间排序
 	sort(jobsWithDueDate.begin(), jobsWithDueDate.end(), myCmpBy_ptime);
 	sort(jobsWithTotalProTime.begin(), jobsWithTotalProTime.end(), myCmpBy_time_duration);
@@ -4083,9 +4160,12 @@ void main()
 	cout << "NEH..." << endl;
 	char p; cin >> p;
 
-	NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	//rule_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
-	//GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	// NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+
+	GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+
 
 
 	for (auto& jobInfo : jobsMap) delete jobInfo.second;

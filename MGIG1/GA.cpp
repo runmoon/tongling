@@ -761,36 +761,38 @@ void GeneticAlgorithm::getNewChromeToNeighbor(Chromosome* chromP, const int tota
 	
 }
 
-
-// 随机选择工序进行搜索
-void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int maxIter) {
-	const int totalLenOfGACode = this->m_totalLenOfGACode;
+// 对一个染色体做局部搜索
+void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, GeneticAlgorithm* populationP, const int maxIter) {
+	//const int totalLenOfGACode = this->m_totalLenOfGACode;
+	const int totalLenOfGACode = chromP->codeLen;
 	Chromosome* chromPTmp = new Chromosome(chromP->codeLen, chromP->rangeOfJob);
 
 	bool isRenew = false;
 	chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
 
 	//cout << " maxIter=" << maxIter << endl;
+	cout << "    before--" << "obj_makespan=" << chromP->objectValues.second
+		<< " obj_tardiness=" << chromP->objectValues.first << endl;
 
 	for (int iter = 0; iter < maxIter; ++iter) {
-		
+
 		int tmp = rand() % 5;
 
 		//cout <<  "  tmp=" << tmp << endl;
 		if (tmp == 0)
-			this->getNeighborByReverse(chromPTmp, totalLenOfGACode);
+			GeneticAlgorithm::getNeighborByReverse(chromPTmp, totalLenOfGACode);
 		else if (tmp == 1)
-			this->getNeighborByExchangeSub(chromPTmp, totalLenOfGACode);
+			GeneticAlgorithm::getNeighborByExchangeSub(chromPTmp, totalLenOfGACode);
 		else if (tmp == 2)
-			this->getNeighborByReinsertSub(chromPTmp, totalLenOfGACode);
-		else if(tmp == 3)
-			this->getNeighborByExchangeTwo(chromPTmp, totalLenOfGACode);
+			GeneticAlgorithm::getNeighborByReinsertSub(chromPTmp, totalLenOfGACode);
+		else if (tmp == 3)
+			GeneticAlgorithm::getNeighborByExchangeTwo(chromPTmp, totalLenOfGACode);
 		else
-			this->getNeighborByReinsertOne(chromPTmp, totalLenOfGACode);
+			GeneticAlgorithm::getNeighborByReinsertOne(chromPTmp, totalLenOfGACode);
 
-		getObjectValuesOfChromo(chromPTmp, this);
+		getObjectValuesOfChromo(chromPTmp, populationP);
 		//cout << " iter=" << iter  << endl;
-		isRenew = false;  
+		isRenew = false;
 		// 如果好，则更新
 		if (chromPTmp->objectValues.second < chromP->objectValues.second) {
 			chromP->code.assign(chromPTmp->code.begin(), chromPTmp->code.end());
@@ -807,12 +809,81 @@ void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int max
 			chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
 		}
 		//cout << "   end" << endl;
+
+		if (isRenew) {
+			cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+				<< " obj_tardiness=" << chromP->objectValues.first << endl;
+			return;
+		}
 	}
+
+	cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+		<< " obj_tardiness=" << chromP->objectValues.first << endl;
 
 }
 
+// 对一个染色体做局部搜索
+void GeneticAlgorithm::localSearchForCurChrome_Parallel(Chromosome* chromP, GeneticAlgorithm* populationP, const int maxIter) {
+	//const int totalLenOfGACode = this->m_totalLenOfGACode;
+	const int totalLenOfGACode = chromP->codeLen;
+	Chromosome* chromPTmp = new Chromosome(chromP->codeLen, chromP->rangeOfJob);
+
+	bool isRenew = false;
+	chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
+
+	//cout << " maxIter=" << maxIter << endl;
+	cout << "    before--" << "obj_makespan=" << chromP->objectValues.second
+		<< " obj_tardiness=" << chromP->objectValues.first << endl;
+
+	for (int iter = 0; iter < maxIter; ++iter) {
+		
+		int tmp = rand() % 5;
+
+		//cout <<  "  tmp=" << tmp << endl;
+		if (tmp == 0)
+			GeneticAlgorithm::getNeighborByReverse(chromPTmp, totalLenOfGACode);
+		else if (tmp == 1)
+			GeneticAlgorithm::getNeighborByExchangeSub(chromPTmp, totalLenOfGACode);
+		else if (tmp == 2)
+			GeneticAlgorithm::getNeighborByReinsertSub(chromPTmp, totalLenOfGACode);
+		else if(tmp == 3)
+			GeneticAlgorithm::getNeighborByExchangeTwo(chromPTmp, totalLenOfGACode);
+		else
+			GeneticAlgorithm::getNeighborByReinsertOne(chromPTmp, totalLenOfGACode);
+
+		getObjectValuesOfChromo(chromPTmp, populationP);
+		//cout << " iter=" << iter  << endl;
+		isRenew = false;
+		// 如果好，则更新
+		if (chromPTmp->objectValues.second < chromP->objectValues.second) {
+			chromP->code.assign(chromPTmp->code.begin(), chromPTmp->code.end());
+
+			chromP->objectValues = chromPTmp->objectValues;
+			chromP->tardinessOfjobs.assign(chromPTmp->tardinessOfjobs.begin(), chromPTmp->tardinessOfjobs.end());
+			for (auto& ele : chromPTmp->delayJobs)  chromP->delayJobs.insert(ele);
+			isRenew = true;
+
+			//cout<<"    isRenew=" << isRenew << endl;
+			//cout << "    chromPTmp->objectValues.first(dueTime) =" << chromPTmp->objectValues.second << endl;
+		}
+		else {
+			chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
+		}
+		//cout << "   end" << endl;
+
+		if (isRenew) {
+			cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+				<< " obj_tardiness=" << chromP->objectValues.first << endl;
+			return;
+		}
+	}
+
+	cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+		<< " obj_tardiness=" << chromP->objectValues.first << endl;
+}
+
 /*
-// 随机选择工序进行搜索
+// 对一个染色体做局部搜索
 void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int maxIter) {
 	const int totalLenOfGACode = this->m_totalLenOfGACode;
 	Chromosome* chromPTmp = new Chromosome(chromP->codeLen, chromP->rangeOfJob);
@@ -911,7 +982,7 @@ void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int max
 }
 
 
-// 随机选择工序进行搜索
+// 对一个染色体做局部搜索
 void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int maxIter) {
 	const int totalLenOfGACode = this->m_totalLenOfGACode;
 	Chromosome* chromPTmp = new Chromosome(chromP->codeLen, chromP->rangeOfJob);
@@ -1024,13 +1095,15 @@ void GeneticAlgorithm::localSearch() {
 	vector<Chromosome*>& popPool = this->m_popPool;
 	sort(popPool.begin(), popPool.end(), GeneticAlgorithm::compareChrom);
 
+
+
 	for (int i = 0; i < numBestChrome; ++i) {
 		Chromosome* chromP = popPool[i];
 		cout << "    " << i << "=" << i << " obj_makespan=" << chromP->objectValues.second
 			<< " obj_tardiness=" << chromP->objectValues.first << endl;
 
-		localSearchForCurChrome(chromP, maxIter);
-		
+		localSearchForCurChrome(chromP, this, maxIter);
+
 		cout << "    " << i << "=" << i << " obj_makespan=" << chromP->objectValues.second
 			<< " obj_tardiness=" << chromP->objectValues.first << endl;
 		cout << endl;
@@ -1042,7 +1115,7 @@ void GeneticAlgorithm::localSearch() {
 		cout << "    " << i << "=" << i + numBestChrome << " " << pos << " obj_makespan=" << chromP->objectValues.second
 			<< " obj_tardiness=" << chromP->objectValues.first << endl;
 
-		localSearchForCurChrome(chromP, maxIter);
+		localSearchForCurChrome(chromP, this, maxIter);
 
 		cout << "    " << i << "=" << i + numBestChrome << " " << pos << " obj_makespan=" << chromP->objectValues.second
 			<< " obj_tardiness=" << chromP->objectValues.first << endl;
@@ -1050,6 +1123,60 @@ void GeneticAlgorithm::localSearch() {
 	}
 
 }
+
+/*
+void GeneticAlgorithm::localSearch_Parallel() {
+	// 选择几个好个体
+	// 对每一个染色体，迭代max_iter次，当新染色体好时，更新
+	const int numOfPop = this->m_numOfPop;
+	const int maxIter = 50;  // 最大迭代次数
+	const int numBestChrome = 10;  // 选择前几个最好的染色体进行local Search
+	const int numRandomChrome = 5;  // 选择前几个最好的染色体，再从后面随机选择一部分
+	
+	const unsigned int NumOfTotalChosen = numBestChrome + numRandomChrome;
+	
+	vector<Chromosome*>& popPool = this->m_popPool;
+	sort(popPool.begin(), popPool.end(), GeneticAlgorithm::compareChrom);
+	
+	vector<Chromosome*> chosenChroms(NumOfTotalChosen);
+	int index = 0;
+	for (int i = 0; i < numBestChrome; ++i) 
+		chosenChroms[index++] = popPool[i];
+	for (int i = 0; i < numRandomChrome; ++i) {
+		int pos = (numOfPop - numBestChrome) * (1.0 * rand()) / (RAND_MAX + 1.0) + numBestChrome;
+		chosenChroms[index++] = popPool[pos];
+	}
+
+	const unsigned int num_thread = thread::hardware_concurrency();  // 获取硬件所支持的线程个数
+	vector<thread> threads(num_thread);
+
+	cout << "num_thread=" << num_thread << endl;
+
+	index = 0;
+	int round = NumOfTotalChosen / num_thread; // 需要几轮
+	for (int i = 0; i < round; ++i) {
+		for (int j = 0; j < num_thread; ++j) {
+			Chromosome* chromP = chosenChroms[index++];
+			cout << " j_thread=" << j << endl;
+			threads[j] = thread(localSearchForCurChrome, chromP, this, maxIter);
+		}
+		for (int j = 0; j < num_thread; ++j) {
+			threads[j].join();
+		}
+	}
+	int restNum = NumOfTotalChosen % num_thread;
+	if (restNum != 0) {
+		for (int j = 0; j < restNum; ++j) {
+			Chromosome* chromP = chosenChroms[index++];
+			threads[j] = thread(localSearchForCurChrome, chromP, this, maxIter);
+		}
+		for (int j = 0; j < restNum; ++j) {
+			threads[j].join();
+		}
+	}
+	 
+}
+*/
 
 void GeneticAlgorithm::getObjValForChilds() {
 	const int numOfParentsForCroOver = this->m_numForCrossOver;
@@ -1248,7 +1375,10 @@ void GeneticAlgorithm::runGA() {
 		char a;
 		//cin >> a;
 		//break;
+		
 		this->localSearch();
+		//this->localSearch_Parallel();
+
 		cout << " localsearch of" << curGeneration << endl;
 		this->m_coeff_pressure *= this->m_pressureBaseNum;  // 更新轮盘赌选择压力系数
 
@@ -1432,7 +1562,91 @@ pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorith
 	chromP->objectValues = objVals;
 
 	// 打印最终排程结果
-	if (isPrint) { cout << "testPrint!!!" << endl;  printFinalRes(jobsMapTemp, machsMapTemp); }
+	if (isPrint) { 
+		cout << "testPrint!!!" << endl;  printFinalRes(jobsMapTemp, machsMapTemp); 
+	}
+	return objVals;
+}
+
+// 获取染色体的目标函数值
+pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, GeneticAlgorithm* populationP, bool isPrint)
+{
+	const int totalLenOfGACode = populationP->m_totalLenOfGACode;
+
+	//cout <<"uiuiiiiiiiii" <<endl;
+	vector<pair<string, Job*>>& jobOrder = populationP->m_jobOrderTmp2;
+	map<string, Job*>& jobsMapTemp = populationP->m_jobsMapTmp2;
+	map<string, Mach*>& machsMapTemp = populationP->m_machsMapTmp2;
+	// 用来排气垫炉之前的工序
+	vector<pair<string, Job*>>* jobOrderBefAirP = populationP->m_jobOrderBefAirP;
+	map<string, Job*>* jobsMapBefAirP = populationP->m_jobsMapBefAirP;
+	map<string, Mach*>* machsMapBefAirP = populationP->m_machsMapBefAirP;
+
+	resetJobsTemp(jobOrder, *jobOrderBefAirP);
+	resetMachsMapTemp(machsMapTemp, *machsMapBefAirP);
+
+	// 排入气垫炉中间的工序
+	for (int i_pro = 0; i_pro < totalLenOfGACode; ++i_pro) {
+		int jobIndex = chromP->code[i_pro];
+		Job* curJobP = jobOrder[jobIndex].second;
+		int machIndex = curJobP->m_curMachIndex;
+
+		pair<string, unsigned>& machCodeOfCurJob = curJobP->m_proceMachs[machIndex];
+
+		bool isSuccess = false;
+		if (CodeOfBellFurn == machCodeOfCurJob.first)  // 是钟罩炉
+		{
+			Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machsMapTemp[machCodeOfCurJob.first]);
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+		}
+		else if (airFurnaceSet.find(machCodeOfCurJob.first) != airFurnaceSet.end()) // 是气垫炉组中的机器
+		{
+			Mach_AirFurnace* curMachP = static_cast<Mach_AirFurnace*>(machsMapTemp[machCodeOfCurJob.first]);
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+		}
+		else {  //其他
+			Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+		}
+		if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
+	}
+
+	// 排入剩余工序
+	Job* curJobP;
+	for (auto& jobInfo : jobOrder)
+	{
+		curJobP = jobInfo.second;
+		for (int machIndex = curJobP->m_curMachIndex; machIndex < curJobP->m_proceMachs.size(); ++machIndex)   // 遍历某个job的剩余工序
+		{
+			pair<string, unsigned>& machCodeOfCurJob = curJobP->m_proceMachs[machIndex];
+			bool isSuccess;
+			if (CodeOfBellFurn == machCodeOfCurJob.first)  // 是钟罩炉
+			{
+				Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machsMapTemp[machCodeOfCurJob.first]);
+				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+			}
+			else if (airFurnaceSet.find(machCodeOfCurJob.first) != airFurnaceSet.end()) // 是气垫炉组中的机器
+			{
+				Mach_AirFurnace* curMachP = static_cast<Mach_AirFurnace*>(machsMapTemp[machCodeOfCurJob.first]);
+				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+			}
+			else  //其他
+			{
+				Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
+				isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			}
+			if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
+		}
+	}
+
+	// 获取目标值
+	pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	chromP->objectValues = objVals;
+
+	// 打印最终排程结果
+	if (isPrint) {
+		cout << "testPrint!!!" << endl;  printFinalRes(jobsMapTemp, machsMapTemp);
+	}
 	return objVals;
 }
 

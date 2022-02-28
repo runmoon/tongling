@@ -30,6 +30,9 @@
 
 #include <time.h>
 
+// 多线程相关
+#include<thread>
+
 // boost时间相关
 #include<boost/timer.hpp>
 #include<boost/date_time.hpp>
@@ -387,7 +390,7 @@ void initialMachs2(MYSQL_RES* res, vector<string>& machsCodeVec, map<string, Mac
 // 查看制程
 void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
-// 初始化不同的job vector，处理时间，松弛时间，截止时间
+// 获取job各个工序处理时间，并初始化不同的job vector，每个工序的处理时间，总加工时间，松弛时间，截止时间
 void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
 	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
@@ -414,11 +417,18 @@ double getMakespan(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 // 获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
 pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
+// 获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>，还有每个job的脱期时长
+pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, map<Job*, double>& jobTardiness);
+
 // --------END OF--获取目标函数值相关--------
 
 
 
 // --------求解相关--------
+
+// 按规则排序
+void rule_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
 // NEH方法
 void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
