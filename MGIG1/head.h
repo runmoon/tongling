@@ -32,6 +32,7 @@
 
 // 多线程相关
 #include<thread>
+#include<mutex>
 
 // boost时间相关
 #include<boost/timer.hpp>
@@ -269,6 +270,15 @@ double getCurInnerDia(Job* jobP, int machIndexOfJob);
 
 
 
+// 多线程相关
+struct threadInfoOfLS {
+	vector<pair<string, Job*>>     m_jobOrderTmp;
+	map<string, Job*>              m_jobsMapTmp;
+	map<string, Mach*>             m_machsMapTmp;
+};
+
+
+
 // --------MySQL数据库交互--------
 
 // 初始化设置，连接mysql数据库
@@ -398,6 +408,9 @@ void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, ve
 void initialJobsBatch(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<string>& jobsCodeVec
 	, map<string, vector<Job*>>& jobsWithBell, map<string, pair<Job*, int>>& jobsWithBells, vector<BellBatch*>& jobsBatch);
 
+// 为job和mach预先分配时间窗空间
+void allocateTimeWinSpace(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+
 // 打印钟罩炉工序统计个数
 void printBellCount(map<string, Job*>& jobsMap);
 
@@ -430,12 +443,17 @@ pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<str
 void rule_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql,
 	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
+// NEH方法核心运算，jobOrder需要是空的，job的信息都需存在jobsMap中！
+void NEH_MethodCore(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
 // NEH方法
-void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
-	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
 // GA（遗传）方法
-void GA_Method(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
+void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
 // --------END OF--求解相关--------
 
@@ -446,18 +464,25 @@ void GA_Method(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap,
 // 按照已排的开始加工时间，对job进行排序
 bool compareJobPPtime(pair<pair<Job*, int>, ptime> left, pair<pair<Job*, int>, ptime> right);
 
-// 排产，获取初始排产结果
-pair<double, double> scheduleByJobOrderForGA(vector<pair<string, Job*>>& jobOrder,
+// 按jobOrder顺序排产，获取初始排产结果
+pair<double, double> scheduleForGAByJobOrder(vector<pair<string, Job*>>& jobOrder,
 	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, MYSQL* mysql, bool isPrint = true);
 
+// 使用NEH，来获取初始排序结果
+pair<double, double> scheduleForGAByNEH(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
+
 // 排入气垫炉之前的工序，气垫炉中间的工序不排；最后一个工序是纵横剪的，则最后一个工序不排
-pair<double, double> scheduleByJobOrderForGA_BefAir(vector<pair<string, Job*>>& jobOrder,
+pair<double, double> scheduleForGAByJobOrder_BefAir(vector<pair<string, Job*>>& jobOrder,
 	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp, MYSQL* mysql, bool isPrint = true);
+
 
 // 获取GA的编码信息
 void getCodeInfoOfGA_Air(vector<pair<string, Job*>>& jobOrder, vector<pair<Job*, pair<int, int>>>& codeInfoOfGA);
 
-void getCodeInfoOfGA_All(vector<pair<string, Job*>>& jobOrder, vector<pair<Job*, pair<int, int>>>& codeInfoOfGA);
+// 获取GA的染色体编码信息：按照jobOrder的顺序编码为0,1,2,3...
+int getCodeInfoOfGA_All(vector<pair<string, Job*>>& jobOrder, map<string, pair<int, pair<int, int>>>& encodeInfoOfGA);
 
 // --------END OF——GA获取初始解相关--------
 
@@ -515,14 +540,29 @@ void initJobsTemp(map<string, Job*>& jobsMapTemp, vector<pair<string, Job*>>& jo
 // 拷贝machine--把machsMap中的所有machine拷贝一下，放入到machsMapTemp中
 void initMachsMapTemp(map<string, Mach*>& machsMapTemp, map<string, Mach*>& machsMap);
 
-// 拷贝排产时间窗--把jobOrderOrig中的job的排产时间窗拷贝给jobOrder中的job
+// 有预先排产时--拷贝排产时间窗--把jobOrderOrig中的job的排产时间窗拷贝给jobOrder中的job
 void resetJobsTemp(vector<pair<string, Job*>>& jobOrder, vector<pair<string, Job*>>& jobOrderOrig);
 
-// 拷贝排产时间窗--把machsMapOrig中的job的排产时间窗拷贝给machsMap中的machine
+// 有预先排产时--拷贝排产时间窗--把machsMapOrig中的job的排产时间窗拷贝给machsMap中的machine
 void resetMachsMapTemp(map<string, Mach*>& machsMap, map<string, Mach*>& machsMapOrig);
+
+// 无预先排产时--把jobOrder中的job的排产时间窗清0
+void resetJobsToOrigin(vector<pair<string, Job*>>& jobOrder);
+
+// 无预先排产时--把machsMap中的排产时间窗清0
+void resetMachsMapToOrigin(map<string, Mach*>& machsMap);
 
 // 简单拷贝machine
 void reInitMachsMapTemp(map<string, Mach*>& machsMapTemp, map<string, Mach*>& machsMap);
+
+// 释放内存，释放new出的job和mach-多线程用到
+void releaseMemoryOfTmpJobsMachs(vector<pair<string, Job*>>& jobOrderTemp, map<string, Mach*>& machsMapTemp);
+
+// 初始化线程信息
+vector<threadInfoOfLS*> initThreadsInfoOfLS(const int num_thread, vector<pair<string, Job*>>* jobOrderBefP, map<string, Mach*>* machsMapBefP);
+
+// 释放线程信息
+void releaseThreadsInfoOfLS(const int num_thread, vector<threadInfoOfLS*>& threadInfos);
 
 // --------END OF--迭代排产相关，拷贝job或machine--------
 
