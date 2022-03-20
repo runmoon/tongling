@@ -324,10 +324,10 @@ int mystoi(const char* str);
 // --------时间相关--------
 
 // 定义比较pair<Job*, ptime>
-bool myCmpBy_ptime(pair<Job*, ptime> _a, pair<Job*, ptime> _b);
+bool myCmpBy_ptime(const pair<Job*, ptime>& _a, const pair<Job*, ptime>& _b);
 
 // 定义比较pair<Job*, time_duration>
-bool myCmpBy_time_duration(pair<Job*, time_duration> _a, pair<Job*, time_duration> _b);
+bool myCmpBy_time_duration(const pair<Job*, time_duration>& _a, const pair<Job*, time_duration>& _b);
 
 // 小时数（double）转化为time_duration类型
 time_duration double2timeDuration(double _processT);
@@ -453,6 +453,10 @@ void NEH_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 
 // GA（遗传）方法
 void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
+
+// IPG（迭代帕雷多）方法
+void IPG_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
 // --------END OF--求解相关--------

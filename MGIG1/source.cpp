@@ -1,6 +1,7 @@
 #pragma once
 #include<head.h>
 #include<GA.h>
+#include<IPG.h>
 
 std::mutex g_mutex;
 
@@ -510,13 +511,13 @@ int mystoi(const char* str)
 // --------时间相关--------
 
 // 定义比较pair<Job*, ptime>
-bool myCmpBy_ptime(pair<Job*, ptime> _a, pair<Job*, ptime> _b)
+bool myCmpBy_ptime(const pair<Job*, ptime>& _a, const pair<Job*, ptime>& _b)
 {
 	return _b.second < _a.second;
 };
 
 // 定义比较pair<Job*, time_duration>
-bool myCmpBy_time_duration(pair<Job*, time_duration> _a, pair<Job*, time_duration> _b)
+bool myCmpBy_time_duration(const pair<Job*, time_duration>& _a, const pair<Job*, time_duration>& _b)
 {
 	return _a.second < _b.second;
 };
@@ -2281,7 +2282,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	*/
 
 
-	// 从初始排序结果得到染色体
+	// 由initChromCodesByPreCode中预先设定的代码得到染色体
 	Chromosome* chromPInit = new Chromosome(totalLenOfGACode, jobOrderInit.size());   // 染色体
 	Chromosome* chromPInit2 = new Chromosome(totalLenOfGACode, jobOrderInit.size());  // 染色体
 	initChromCodesByPreCode(totalLenOfGACode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
@@ -2343,6 +2344,15 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	for (auto& machInfo : machsMapBef) delete machInfo.second;
 
 };
+
+// IPG（迭代帕雷多）方法
+void IPG_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
+	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime)
+{
+
+
+};
+
 
 
 // --------END OF--求解方法相关--------
@@ -4409,6 +4419,7 @@ void main()
 
 	GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
+	//IPG_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
 
 	for (auto& jobInfo : jobsMap) delete jobInfo.second;
