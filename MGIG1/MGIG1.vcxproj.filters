@@ -24,6 +24,9 @@
     <ClCompile Include="IPG.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="EDCode.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="head.h">
@@ -33,6 +36,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="IPG.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="EDCode.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

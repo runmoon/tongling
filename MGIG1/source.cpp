@@ -2263,7 +2263,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 
 	// 用jobOrderBef获取GA染色体编码信息，存入encodeInfoOfGA
 	map<string, pair<int, pair<int, int>>> encodeInfoOfGA;                    // GA编码信息，按jobOrderBef中的Job顺序编码
-	int totalLenOfGACode = getCodeInfoOfGA_All(jobOrderBef, encodeInfoOfGA);  // GA编码的长度
+	int totalLenOfChromCode = getCodeInfoOfGA_All(jobOrderBef, encodeInfoOfGA);  // GA编码的长度
 
 
 	/*
@@ -2276,21 +2276,21 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	cout << "         bestObjectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
 
 	// 从初始排序结果得到染色体
-	Chromosome* chromPInit = new Chromosome(totalLenOfGACode, jobOrderInit.size());   // 染色体
-	Chromosome* chromPInit2 = new Chromosome(totalLenOfGACode, jobOrderInit.size());  // 染色体
-	initChromCodesByInitSedul(jobOrderInit, encodeInfoOfGA, totalLenOfGACode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
+	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+	initChromCodesByInitSedul(jobOrderInit, encodeInfoOfGA, totalLenOfChromCode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
 	*/
 
 
 	// 由initChromCodesByPreCode中预先设定的代码得到染色体
-	Chromosome* chromPInit = new Chromosome(totalLenOfGACode, jobOrderInit.size());   // 染色体
-	Chromosome* chromPInit2 = new Chromosome(totalLenOfGACode, jobOrderInit.size());  // 染色体
-	initChromCodesByPreCode(totalLenOfGACode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
+	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+	initChromCodesByPreCode(totalLenOfChromCode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
 	
 
 
 	// GA的初始化
-	GeneticAlgorithm* gaP = new GeneticAlgorithm(jobOrder.size(), 150, 200, totalLenOfGACode);
+	GeneticAlgorithm* gaP = new GeneticAlgorithm(jobOrder.size(), 150, 200, totalLenOfChromCode);
 	gaP->initializePopulation(chromPInit, chromPInit2);                     // 初始化种群（染色体集合）
 	gaP->initializeInfoOfBef(&jobOrderBef, &jobsMapBef, &machsMapBef);      // 初始化GA中用于对染色体解码（排产）信息
 
@@ -2302,8 +2302,8 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 
 
 
-	//crossoverOfPop(0.23, numOfPop, totalLenOfGACode, chromPInit, popPool);
-	//mutationOfPop(0.23, gaP->numOfPop, gaP->totalLenOfGACode, chromPInit, popPool);
+	//crossoverOfPop(0.23, numOfPop, totalLenOfChromCode, chromPInit, popPool);
+	//mutationOfPop(0.23, gaP->numOfPop, gaP->totalLenOfChromCode, chromPInit, popPool);
 
 
 	for (int j = 0; j < gaP->m_popPool[10]->tardinessOfjobs.size(); ++j) {
@@ -2323,7 +2323,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	for (int j = 0; j < gaP->m_popPool[10]->code.size(); ++j) {
 		cout << gaP->m_popPool[10]->code[j] << " ";
 	}
-	gaP->getNeighborByReverse(gaP->m_popPool[10], totalLenOfGACode);
+	gaP->getNeighborByReverse(gaP->m_popPool[10], totalLenOfChromCode);
 
 
 	cout << endl;
@@ -2349,7 +2349,91 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 void IPG_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime)
 {
+	cout << "IPG Method..." << endl; cout << endl;
+	Sleep(2000);
 
+	vector<pair<string, Job*>> jobOrder;
+	jobOrder.reserve(jobsWithDueDate.size());
+
+	// for (int i = jobsWithTotalProTime.size() -1; i >= 0; --i) 
+	for (int i = 0; i < jobsWithSlackTime.size(); ++i)
+		//for (int i = 0; i < jobsWithDueDate.size(); ++i)
+		//for (int i = 0; i < jobsWithTotalProTime.size(); ++i)
+	{
+		//Job* curJobP = jobsWithTotalProTime[i].first;
+		Job* curJobP = jobsWithSlackTime[i].first;
+		//Job* curJobP = jobsWithDueDate[i].first;
+		jobOrder.emplace_back(make_pair(curJobP->m_jobCode, curJobP));
+	}
+
+	// 用来生成初始排序结果：jobOrderInit、machsMapInit
+	vector<pair<string, Job*>> jobOrderInit(jobOrder.size());
+	map<string, Job*> jobsMapInit;
+	map<string, Mach*> machsMapInit;
+	initJobsTemp(jobsMapInit, jobOrderInit, jobOrder);
+	initMachsMapTemp(machsMapInit, machsMap);
+
+	// 1、用jobOrderBef的Job顺序来进行染色体编码；2、存储解码前的初始的Job和Mach信息
+	vector<pair<string, Job*>> jobOrderBef(jobOrder.size());
+	map<string, Job*> jobsMapBef;
+	map<string, Mach*> machsMapBef;
+	initJobsTemp(jobsMapBef, jobOrderBef, jobOrder);
+	initMachsMapTemp(machsMapBef, machsMap);
+
+	// 用jobOrderBef获取GA染色体编码信息，存入encodeInfoOfGA
+	map<string, pair<int, pair<int, int>>> encodeInfoOfGA;                    // GA编码信息，按jobOrderBef中的Job顺序编码
+	int totalLenOfChromCode = getCodeInfoOfGA_All(jobOrderBef, encodeInfoOfGA);  // GA编码的长度
+	cout << "ssssssssssssss" << endl;
+
+	/*
+	// 使用NEH方法，来获取初始排序job Order
+	jobOrderInit.clear();
+	NEH_MethodCore(jobOrderInit, jobsMapInit, machsMapInit, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	// 获取初始排序，来获取初始排序结果
+	pair<double, double> objectVals = scheduleByJobOrder(jobOrderInit, jobsMapInit, machsMapInit, mysql, false);
+	cout << "初始排序 jobOrderInit.size()=" << jobOrderInit.size() << endl;
+	cout << "         bestObjectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
+
+	// 从初始排序结果得到染色体
+	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+	*/
+
+
+	// 由initChromCodesByPreCode中预先设定的代码得到染色体
+	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+
+	EDCode* edCodeP = new EDCode(totalLenOfChromCode, &jobOrderBef, &jobsMapBef, &machsMapBef);
+	//edCodeP->initChromCodesByInitSedul(jobOrderInit, encodeInfoOfGA, totalLenOfChromCode, chromPInit, chromPInit2);
+	edCodeP->initChromCodesByPreCode(chromPInit, chromPInit2);
+
+	cout << "ttttttttttttttt" << endl;
+	cout<< totalLenOfChromCode <<endl;
+
+	IPG* ipgP = new IPG(edCodeP);
+	list<Chromosome*> popPool;
+	//ipgP->randomlyCreateInitialSolution_test(popPool);
+
+	char c; cin >> c;
+
+	ipgP->randomlyCreateInitialSolution(80, chromPInit, chromPInit2);
+	popPool = ipgP->popPool;
+	cout << "  codelen=" << ipgP->m_totalLenOfChromCode<< endl;
+
+
+	cout << "Non_pareto set:" << endl;
+	int j = 0;
+	for (auto iter = popPool.begin(); iter != popPool.end(); ++iter) {
+		Chromosome* chromP = *iter;
+		cout << "  chrom " << j++ << ": obj1 = " << chromP->objectValues.first << "  obj2 = " << chromP->objectValues.second << endl;
+	}
+	cout << "end" << endl;
+
+
+	ipgP->getParetoSet(ipgP->popPool);
+
+	ipgP->run(10);
 
 };
 
@@ -2605,17 +2689,17 @@ int getCodeInfoOfGA_All(vector<pair<string, Job*>>& jobOrder, map<string, pair<i
 	}
 
 	// 计算编码总长度
-	int totalLenOfGACode = 0;
+	int totalLenOfChromCode = 0;
 	for (auto& ele : encodeInfoOfGA) {
 		pair<int, int>& codeRange = ele.second.second;
 		if (codeRange.first >= 0)
-			totalLenOfGACode += (codeRange.second - codeRange.first + 1);
+			totalLenOfChromCode += (codeRange.second - codeRange.first + 1);
 	}
 
-	cout << "totalLenOfGACode=" << totalLenOfGACode << endl;
+	cout << "totalLenOfChromCode=" << totalLenOfChromCode << endl;
 	cout << "codeInfoOfGA=" << encodeInfoOfGA.size() << endl;
 
-	return totalLenOfGACode;
+	return totalLenOfChromCode;
 };
 
 // --------END OF——GA获取初始解相关--------
@@ -4415,11 +4499,11 @@ void main()
 
 	//rule_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
-	//NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	//NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);+
 
-	GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	//GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
-	//IPG_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	IPG_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
 
 	for (auto& jobInfo : jobsMap) delete jobInfo.second;

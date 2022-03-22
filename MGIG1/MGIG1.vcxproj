@@ -154,11 +154,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="EDCode.cpp" />
     <ClCompile Include="GA.cpp" />
     <ClCompile Include="IPG.cpp" />
     <ClCompile Include="source.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="EDCode.h" />
     <ClInclude Include="GA.h" />
     <ClInclude Include="head.h" />
     <ClInclude Include="IPG.h" />

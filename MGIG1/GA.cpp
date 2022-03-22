@@ -1113,7 +1113,7 @@ void GeneticAlgorithm::localSearchForCurChrome_Parallel(Chromosome* chromP, Gene
 
 	for (int iter = 0; iter < maxIter; ++iter) {
 
-		int tmp = rand() % 5;
+		int tmp = rand() % 7;
 		//int tmp = rand() % 3;
 
 		//cout <<  "  tmp=" << tmp << endl;
@@ -1123,7 +1123,7 @@ void GeneticAlgorithm::localSearchForCurChrome_Parallel(Chromosome* chromP, Gene
 			GeneticAlgorithm::getNeighborByExchangeSub(chromPTmp, totalLenOfGACode);
 		else if (tmp == 2)
 			GeneticAlgorithm::getNeighborByReinsertSub(chromPTmp, totalLenOfGACode);
-		else if (tmp == 3)
+		else if (tmp == 3|| tmp == 4)
 			GeneticAlgorithm::getNeighborByExchangeTwo(chromPTmp, totalLenOfGACode);
 		else
 			GeneticAlgorithm::getNeighborByReinsertOne(chromPTmp, totalLenOfGACode);
@@ -1489,8 +1489,7 @@ void GeneticAlgorithm::runGA() {
 	cout << "CurGeneration=" << curGeneration << endl;
 	clock_t startTime, endTime;
 	startTime = clock();
-	char a;
-	cin >> a;
+	// char a; cin >> a;
 	
 	//const unsigned int num_thread = thread::hardware_concurrency();  // 获取硬件所支持的线程个数
 	const int num_thread = 5;  // 这里最高设置为6；设置为5时，CPU最高占用85%
@@ -1498,8 +1497,7 @@ void GeneticAlgorithm::runGA() {
 
 	for (; curGeneration <= totalGeneration; ++curGeneration) {
 		cout << "CurGeneration=" << curGeneration << endl;
-		char a;
-		//cin >> a;
+		char a; cin >> a;
 		//break;
 		
 		//this->localSearch();
@@ -1708,6 +1706,7 @@ pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorith
 	}
 	return objVals;
 };
+
 
 // 获取染色体的目标函数值
 pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, GeneticAlgorithm* gaP, threadInfoOfLS* threadInfoP, bool isPrint)

@@ -23,6 +23,7 @@ public:
 
 	Chromosome(const Chromosome* c1) {
 		this->code = c1->code;
+		this->codeLen = c1->codeLen;
 		this->rangeOfJob = c1->rangeOfJob;
 		this->code.assign(c1->code.begin(), c1->code.end());
 		this->objectValues = c1->objectValues;

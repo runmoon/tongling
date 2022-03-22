@@ -1,6 +1,8 @@
 #pragma once
 #include<head.h>
 #include<GA.h>
+#include<EDCode.h>
+
 
 #include<set>
 #include<list>
@@ -8,10 +10,16 @@
 #include<utility>
 #include<algorithm>
 #include<iostream>
+#include<time.h>
+
+#include<thread>
+#include<mutex>
+
+
 
 using namespace std;
-const int nummin = 3;  // 包括
-const int nummax = 5;  // 不包括
+const int nummin = 10;  // 包括
+const int nummax = 15;  // 不包括
 
 /*
 class Chromosome {
@@ -66,28 +74,56 @@ public:
 };
 
 
-void randomlyCreateInitialSolution_test(list<Chromosome*>& popPool);
+
+class IPG {
+public:
+	IPG(EDCode *edCodePEx):edCodeP(edCodePEx) {
+		this->m_totalLenOfChromCode = edCodePEx->m_totalLenOfChromCode;
+		this->m_numOfJobRange = edCodePEx->m_numOfJobRange;
+	};
+	EDCode* edCodeP;
+
+	list<Chromosome*> popPool;
+
+	void run(const int maxRound);
+
+	void randomlyCreateInitialSolution_test(list<Chromosome*>& popPool);
+
+	void randomlyCreateInitialSolution(const int numOfPop, Chromosome* chromPInit, Chromosome* chromPInit2);
+
+	void initObjValsOfChromos();
+
+	Chromosome* selection(list<Chromosome*>& paretoSoluSet);
+
+	void destruction(Chromosome* chromChosen, vector<int>& genesChrosen);
+
+	void construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen);
+
+	void construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen, vector<threadInfoOfLS*>& threadInfos);
+	
 
 
-Chromosome* selection(list<Chromosome*>& paretoSoluSet);
+	void insertToAChrom_Parellel(list<Chromosome*>& partialSoluSetNew, Chromosome* curChrom, int gene, vector<threadInfoOfLS*>& threadInfos);
 
 
-void destruction(Chromosome* chromChosen, vector<int>& genesChrosen);
+
+	static void calculateTempChroms_thread(vector<Chromosome*>& chromsForThread, threadInfoOfLS* threadInfoP);
 
 
-void construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen);
+	void update(list<Chromosome*>& partialSoluSet, list<Chromosome*>& preParetoSet);
+
+	static bool insertToParetoSet(list<Chromosome*>& partialSoluSetNew, Chromosome* chromNew);
+
+	void getParetoSet(list<Chromosome*>& solutionSet);
+
+	void getObjVals_test(Chromosome* chromNew);
 
 
-void update(list<Chromosome*>& partialSoluSet, list<Chromosome*>& preParetoSet);
+	int m_totalLenOfChromCode;
+	int m_numOfJobRange;
+};
 
 
-bool insertToParetoSet(list<Chromosome*>& partialSoluSetNew, Chromosome* chromNew);
-
-
-void getParetoSet(list<Chromosome*>& solutionSet);
-
-
-void getObjValsTest(Chromosome* chromNew);
 
 
 
