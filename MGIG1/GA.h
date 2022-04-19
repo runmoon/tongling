@@ -1,39 +1,10 @@
 #pragma once
+
 #include<head.h>
+#include<NDS.h>
+#include<Chromosome.h>
 #include<cstring>
 
-
-class Chromosome {
-public:
-	Chromosome(int len, int rangeOfJob) :codeLen(len), rangeOfJob(rangeOfJob) {
-		this->code = vector<int>(len, -1);
-		this->objectValues = make_pair(DBL_MAX, DBL_MAX);
-		this->tardinessOfjobs.reserve(rangeOfJob);
-		this->tardinessOfjobs = vector<double>(rangeOfJob, 0.0);
-		this->delayJobs.reserve(rangeOfJob);
-	};
-	int codeLen;
-	int rangeOfJob;  // job的编码范围为：0-rangeOfJob
-	vector<int> code;
-	pair<double, double> objectValues;  // pair<总脱期时间，makespan>
-
-	vector<double> tardinessOfjobs;  // 每个job的脱期时长 time_duration
-	vector<int> delayJobs;        // 脱期的Job，改动后
-	// map<int, double>  delayJobs;  // 脱期的Job，原来
-
-	Chromosome(const Chromosome* c1) {
-		this->code = c1->code;
-		this->codeLen = c1->codeLen;
-		this->rangeOfJob = c1->rangeOfJob;
-		this->code.assign(c1->code.begin(), c1->code.end());
-		this->objectValues = c1->objectValues;
-		this->tardinessOfjobs.assign(c1->tardinessOfjobs.begin(), c1->tardinessOfjobs.end());
-		this->delayJobs.clear();
-
-		//for (auto& ele : c1->delayJobs) { this->delayJobs.emplace_back(ele); }
-		this->delayJobs = c1->delayJobs;
-	}
-};
 
 
 class GeneticAlgorithm {
@@ -67,7 +38,7 @@ public:
 	void chosenChromsByTournament(const int numOfChromsToChose, const int numOfPop, vector<Chromosome*>& popPool, vector<int>& chosenChroms, int isPutBack);
 
 	// 锦标赛选择，挑选不好的扔出来
-	void chosenChromsByTournament2(const int numOfChromsToChose, const int numOfPop, vector<Chromosome*>& popPool, vector<int>& chosenChroms, int isPutBack);
+	void chosenChromsByTournamentReject(const int numOfChromsToChose, const int numOfPop, vector<Chromosome*>& popPool, vector<int>& chosenChroms, const int numElites, int isPutBack);
 
 	void crossoverOfPop();
 
@@ -117,12 +88,29 @@ public:
 		return c1->objectValues.second < c2->objectValues.second;
 	};
 
-	//选择下一代，同时保留精英
-	void selectForNextGeneration();
+	// 通过 锦标赛选择法(放回) 或 轮盘赌选择法(放回) 选择下一代，同时保留精英
+	void selectionForNextPop();
+
+	// 通过“锦标赛剔除法”选择下一代，同时保留精英
+	void selection_ByTournamentReject();
 
 	void printBestObjVal();
 
 	void runGA();
+
+
+
+
+
+	// 对一个染色体做局部搜索
+	static void localSearchForCurChrome_Parallel_DueObjs(Chromosome* chromP, GeneticAlgorithm* gaP, const int maxIter, threadInfoOfLS* threadInfoP);
+
+	//建立多层pareto前沿面，按照帕雷多层数和挤度选择下一代；
+	void selectForNextGeneration_byParetoPlanes();
+
+	void runNSGA2();
+
+
 
 
 
@@ -138,7 +126,7 @@ public:
 	vector<pair<Job*, pair<int, int>>> m_codeInfoOfGA;  // vector<pair<某Job*, pair<GA编码的制程开始索引, GA编码的制程结束索引>>>
 	list<pair<double, double>> m_recordOfBestObjVals;
 
-	double m_eliteRate = 0.00;
+	double m_eliteRate = 0.015;
 	double m_mutatRate = 0.03;
 	double m_crossRate = 0.08;
 	int m_numForMutation;
@@ -168,7 +156,8 @@ public:
 // --------GA获取目标函数值相关--------
 
 // GA解码用，可以获取job的拖期时长————获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
-pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP);
+//pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP);
+pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, Chromosome* chromP);
 
 // 获取染色体的目标函数值
 pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorithm* gaP, bool isPrint);

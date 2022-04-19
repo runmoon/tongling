@@ -219,7 +219,8 @@ void EDCode::initChromCodesByPreCode(Chromosome* chromPInit, Chromosome* chromPI
 
 
 // GA解码用，可以获取job的拖期时长————获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
-pair<double, double> EDCode::getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP)  // get object value
+//pair<double, double> EDCode::getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP)  // get object value
+pair<double, double> EDCode::getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, Chromosome* chromP)
 {
 	chromP->delayJobs.clear();
 	double totalDueTime(0.0);   // 总延期时间（小时）
@@ -271,14 +272,43 @@ pair<double, double> EDCode::getObjValsForChrom(vector<pair<string, Job*>>& jobO
 	//cout<< "timeOfStart=" << to_iso_extended_string(timeOfStart) << endl;
 
 
+	// 计算总切换时间
+	double totalSwitchT = 0.0;
+	for (auto& machInfo : machsMap){  // 遍历所有mach
+		string machCode = machInfo.first;
+		
+		if (CodeOfBellFurn == machCode)  // 是钟罩炉
+		{
+			Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machInfo.second);
+			;
+		}
+		else {  //其他
+			Mach* curMachP = machInfo.second;
+			double switchT = curMachP->m_timeOfSwith;
+			if (switchT == 0.0 || curMachP->m_allocatedTimeWin.size()==0) continue;
+
+			list<pair<pair<string, unsigned>, time_period>>::iterator iter = curMachP->m_allocatedTimeWin.begin();
+			list<pair<pair<string, unsigned>, time_period>>::iterator iterNext = iter;
+			++iterNext;
+			for (; iterNext != curMachP->m_allocatedTimeWin.end(); ++iter, ++iterNext) {
+				if(jobsMap[iter->first.first]->m_alloyGrade != jobsMap[iterNext->first.first]->m_alloyGrade)
+					totalSwitchT += switchT;
+			}
+		}
+
+	}
+
+
 	makeSpan = timeDuration2Double(timeOfCompletion - timeOfStart);
 	//std::cout << "totalDueTime=　" << totalDueTime << std::endl;
 	//std::cout << "makeSpan = " << makeSpan << std::endl;
 	//std::cout << std::endl;
 
 	//return make_pair(totalDueTime, makeSpan);
-	return make_pair(makeSpan, totalRuntime);
+	//return make_pair(makeSpan, totalRuntime);
+	return make_pair(totalSwitchT, makeSpan);
 };
+
 
 // 获取染色体的目标函数值
 pair<double, double> EDCode::getObjectValuesOfChromo(Chromosome* chromP, bool isPrint)
@@ -300,6 +330,8 @@ pair<double, double> EDCode::getObjectValuesOfChromo(Chromosome* chromP, bool is
 	// 排入气垫炉中间的工序
 	for (int i_pro = 0; i_pro < lenOfChromCode; ++i_pro) {
 
+		//cout <<"  i_pro=" << i_pro << endl;
+
 		int jobIndex = chromP->code[i_pro];
 		Job* curJobP = jobOrder[jobIndex].second;
 		int machIndex = curJobP->m_curMachIndex;
@@ -319,10 +351,14 @@ pair<double, double> EDCode::getObjectValuesOfChromo(Chromosome* chromP, bool is
 		}
 		else {  //其他
 			Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-			isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			//cout << "  machCodeOfCurJob.first=" << machCodeOfCurJob.first << endl;
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+			//cout << "      machCodeOfCurJob.first=" << machCodeOfCurJob.first << endl;
 		}
 		if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 	}
+	//cout <<"finished" << endl;
 
 	// 排入剩余工序
 	Job* curJobP;
@@ -346,14 +382,17 @@ pair<double, double> EDCode::getObjectValuesOfChromo(Chromosome* chromP, bool is
 			else  //其他
 			{
 				Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-				isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+				//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 			}
 			if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 		}
 	}
 
 	// 获取目标值
-	pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	// pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	pair<double, double> objVals = getObjValsForChrom(jobOrder, jobsMapTemp, machsMapTemp, chromP);
+
 	chromP->objectValues = objVals;
 
 	// 打印最终排程结果
@@ -418,7 +457,8 @@ pair<double, double> EDCode::getObjectValuesOfChromo_Parallel(Chromosome* chromP
 		}
 		else {  //其他
 			Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-			isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 		}
 		if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 	}
@@ -454,7 +494,8 @@ pair<double, double> EDCode::getObjectValuesOfChromo_Parallel(Chromosome* chromP
 	*/
 
 	// 获取目标值
-	pair<double, double> objVals = EDCode::getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	//pair<double, double> objVals = EDCode::getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	pair<double, double> objVals = EDCode::getObjValsForChrom(jobOrder, jobsMapTemp, machsMapTemp, chromP);
 	chromP->objectValues = objVals;
 
 

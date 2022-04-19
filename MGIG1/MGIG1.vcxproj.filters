@@ -27,6 +27,15 @@
     <ClCompile Include="EDCode.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="NDS.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="Chromosome.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="testCases.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="head.h">
@@ -39,6 +48,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="EDCode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="NDS.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Chromosome.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="testCases.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

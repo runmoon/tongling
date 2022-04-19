@@ -1,6 +1,6 @@
 #pragma once
 #include<head.h>
-#include<GA.h>
+#include<Chromosome.h>
 
 // Encode and Decode
 class EDCode {
@@ -33,7 +33,8 @@ public:
 
 
 	// GA解码用，可以获取job的拖期时长————获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
-	static pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP);
+	//static pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP);
+	static pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, Chromosome* chromP);
 
 	// 获取染色体的目标函数值
 	pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, bool isPrint);

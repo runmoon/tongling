@@ -19,6 +19,7 @@
 #include <cstdlib> // Header file needed to use srand and rand
 #include<algorithm>
 #include<iostream>
+#include<random>  // 随机数
 #include<stdlib.h>
 
 #include<sstream>
@@ -50,6 +51,20 @@ using namespace std;
 using namespace boost;
 using namespace boost::gregorian;  //日期形式
 using namespace boost::posix_time;
+
+
+
+extern set<string> rollingMachFrequ;  // 轧机组;
+
+extern set<string> cut_StretchMachFrequ;  // 横纵剪和拉弯矫;
+
+extern set<string> cutMachFrequ;  // 横纵剪;
+
+extern set<string> stretchMachFrequ;  // 拉弯矫; 
+
+extern set<string> washMachFrequ;     // 清洗机列;
+
+extern set<string> airFurnaceSet;     // 气垫炉;
 
 
 // 钟罩炉
@@ -140,7 +155,23 @@ struct Mach {
 
 	vector<CapWithConditions> m_capsOriginalInfo;  // 机组的产能信息
 
-	double m_timeOfSwith;
+	double m_timeOfSwith{0.0};
+
+
+	Mach() {};
+
+	Mach(string machCode) {
+		if (airFurnaceSet.find(machCode)!= airFurnaceSet.end()) return;
+		if (rollingMachFrequ.find(machCode) != rollingMachFrequ.end()) { // 轧机
+			this->m_timeOfSwith = 0.1;   // 不同的牌号需要规格转换，规格转化时间5小时
+		}
+		else if (stretchMachFrequ.find(machCode) != stretchMachFrequ.end()) {  //拉弯矫
+			this->m_timeOfSwith = 0.2;   // 不同的牌号需要规格转换，规格转化时间5小时
+		}
+		else if (washMachFrequ.find(machCode) != washMachFrequ.end()) {  //清洗机
+			this->m_timeOfSwith = 0.2;   // 不同的牌号需要规格转换，规格转化时间5小时
+		}
+	};
 
 	virtual ~Mach() {};
 };
@@ -279,7 +310,11 @@ struct threadInfoOfLS {
 
 
 
+
 // --------MySQL数据库交互--------
+
+// 从数据库读入数据初始化Jobs和Machs的信息
+void initialByDatabase(MYSQL* mysql, vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap);
 
 // 初始化设置，连接mysql数据库
 bool ConnectDatabase(MYSQL* mysql);
@@ -294,6 +329,7 @@ bool InsertDatabase1(MYSQL* mysql, char* sql);
 
 
 
+
 // --------产能解析相关--------
 
 // 判断_number是否在_aRange(格式为"[0.1,3.4]")的范围内
@@ -303,7 +339,12 @@ bool isInRange(string _aRange, double _number);
 string getStatus(string machCode, Job* jobP, unsigned machIndex);
 
 // 获取加工时间； 根据mach和job得到job在该mach上的加工时间
+time_duration getProcessTime2(Mach* machP, Job* jobP, unsigned machIndex);
+
+// 获取加工时间； 根据mach和job得到job在该mach上的加工时间
 time_duration getProcessTime(Mach* machP, Job* jobP, unsigned machIndex);
+// time_duration getProcessTime_Simplified(Mach* machP, Job* jobP, unsigned machIndex)
+
 
 // batch组批
 void batch();
@@ -318,6 +359,7 @@ double mystod(const char* str);
 int mystoi(const char* str);
 
 // --------END OF--产能解析相关--------
+
 
 
 
@@ -339,10 +381,14 @@ double timeDuration2Double(time_duration _timeDura);
 
 
 
+
 // --------排产，把某工单排入某机器的空闲时间--------
 
-// 把某工单排入某机器
-bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
+// 原版--把某工单排入某机器（非气垫炉、钟罩炉）
+//bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob);
+
+// 把某工单排入某机器（非气垫炉、钟罩炉）
+bool  insertJob(Job& curJob, Mach& curMach, unsigned machIndexOfJob, map<string, Job*>& jobsMap);
 
 // 把某工单排入某个气垫炉
 bool  insertJob(Job& curJob, Mach_AirFurnace& curMach, unsigned machIndexOfJob, map<string, Job*>& jobsMap);
@@ -371,7 +417,14 @@ pair<unsigned, bool> preInsertJobToMach(Job& curJob, Mach_BellFurnace& curMach, 
 // 对于气垫炉，检查是否需要规格切换（根据前后工件的牌号是否相同来判断）airFurnaceSet
 bool getIsSwitch(Job& curJob, Mach& curMach, Job& otherJob);
 
+// 对于气垫炉，检查是否需要规格切换（根据前后工件的牌号是否相同来判断）airFurnaceSet
+bool getIsSwitch(Job& curJob, Mach_AirFurnace& curMach, Job& otherJob);  // 是否需要切换
+
+// 对于非气垫炉的其他机器，检查是否需要规格切换（根据前后工件的牌号是否相同来判断）
+bool getIsSwitch(Job& curJob, Mach& curMach, Job& otherJob);  // 是否需要切换
+
 // --------END OF--排产，把某工单排入某机器的空闲时间--------
+
 
 
 
@@ -422,6 +475,7 @@ void printDueProSlackTime(vector<pair<Job*, ptime>>& jobsWithDueDate
 
 
 
+
 // --------获取目标函数值相关--------
 
 // 获取makespan目标函数值
@@ -434,6 +488,7 @@ pair<double, double> getObjVals(map<string, Job*>& jobsMap, map<string, Mach*>& 
 pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, map<Job*, double>& jobTardiness);
 
 // --------END OF--获取目标函数值相关--------
+
 
 
 
@@ -460,6 +515,7 @@ void IPG_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
 // --------END OF--求解相关--------
+
 
 
 
@@ -492,6 +548,7 @@ int getCodeInfoOfGA_All(vector<pair<string, Job*>>& jobOrder, map<string, pair<i
 
 
 
+
 // --------结果输出相关，输出到控制台和CSV文件--------
 
 // 打印最终排程结果
@@ -507,6 +564,7 @@ void writeToCSV(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 void writeToCSV(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL* mysql);
 
 // --------END OF--结果输出相关，输出到控制台和CSV文件--------
+
 
 
 
@@ -533,6 +591,7 @@ void moveTheFollowedTimeWin(map<string, Job*>& jobsMapTemp, map<string, Mach*>& 
 void syncTimeWinANDTimeWinPs(map<string, Mach*>& machsMapTemp);
 
 // --------END OF--排产主函数相关，一个一个排入每个工--------
+
 
 
 
@@ -569,6 +628,21 @@ vector<threadInfoOfLS*> initThreadsInfoOfLS(const int num_thread, vector<pair<st
 void releaseThreadsInfoOfLS(const int num_thread, vector<threadInfoOfLS*>& threadInfos);
 
 // --------END OF--迭代排产相关，拷贝job或machine--------
+
+
+
+
+
+
+// --------案例生成--------
+
+void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap);
+
+
+// --------END OF--案例生成--------
+
+
+
 
 
 

@@ -1,8 +1,10 @@
 #pragma once
-#include<head.h>
-#include<GA.h>
-#include<EDCode.h>
 
+#include<head.h>
+#include<Chromosome.h>
+
+#include<NDS.h>
+#include<EDCode.h>
 
 #include<set>
 #include<list>
@@ -65,13 +67,13 @@ public:
 	}
 };
 
-
 class cmpByObjSecond {
 public:
 	bool operator()(Chromosome* c1, Chromosome* c2) {
-		return c1->objectValues.second < c2->objectValues.second;
+		return c1->objectValues.second > c2->objectValues.second;
 	}
 };
+
 
 
 
@@ -99,15 +101,25 @@ public:
 
 	void construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen);
 
+
+
 	void construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen, vector<threadInfoOfLS*>& threadInfos);
 	
-
-
 	void insertToAChrom_Parellel(list<Chromosome*>& partialSoluSetNew, Chromosome* curChrom, int gene, vector<threadInfoOfLS*>& threadInfos);
 
-
-
 	static void calculateTempChroms_thread(vector<Chromosome*>& chromsForThread, threadInfoOfLS* threadInfoP);
+
+
+
+	list<int> construction_MultiParetos_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen, vector<threadInfoOfLS*>& threadInfos);
+
+	void insertToAChrom__MultiParetos_Parellel(list<Chromosome*>& partialSoluSetNew, Chromosome* curChrom, int gene, vector<threadInfoOfLS*>& threadInfos);
+
+	void choseByMultiParetos(list<Chromosome*>& partialSoluSet, list<Chromosome*>& partialSoluSetNew, const int maxNumOfPop);
+
+	void choseByPareto(list<Chromosome*>& partialSoluSet, list<Chromosome*>& partialSoluSetNew);
+
+
 
 
 	void update(list<Chromosome*>& partialSoluSet, list<Chromosome*>& preParetoSet);
@@ -122,10 +134,5 @@ public:
 	int m_totalLenOfChromCode;
 	int m_numOfJobRange;
 };
-
-
-
-
-
 
 

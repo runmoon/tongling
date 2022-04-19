@@ -154,16 +154,22 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Chromosome.cpp" />
     <ClCompile Include="EDCode.cpp" />
     <ClCompile Include="GA.cpp" />
     <ClCompile Include="IPG.cpp" />
+    <ClCompile Include="NDS.cpp" />
     <ClCompile Include="source.cpp" />
+    <ClCompile Include="testCases.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Chromosome.h" />
     <ClInclude Include="EDCode.h" />
     <ClInclude Include="GA.h" />
     <ClInclude Include="head.h" />
     <ClInclude Include="IPG.h" />
+    <ClInclude Include="NDS.h" />
+    <ClInclude Include="testCases.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

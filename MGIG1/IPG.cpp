@@ -1,8 +1,3 @@
-
-
-
-
-
 #pragma once
 #include<IPG.h>
 
@@ -10,11 +5,25 @@
 extern std::mutex g_mutex;
 
 
-
 void IPG::run(const int maxRound) {
 
 	clock_t startTime, endTime;
 	startTime = clock();
+
+
+	list<pair<pair<double, double>, pair<double, double>>> objValsRecord;
+	list<bool> isRenewRecord;
+	list<Chromosome*> popPoolPre=this->popPool;
+	list<list<int>> objValChanges;
+
+	auto lastIter = popPool.end();
+	--lastIter;
+	objValsRecord.emplace_back(make_pair((*popPool.begin())->objectValues, (*lastIter)->objectValues));
+	if (popPoolPre == popPool)
+		isRenewRecord.emplace_back(false);
+	else
+		isRenewRecord.emplace_back(true);
+
 
 	for (int i_round = 0; i_round < maxRound; ++i_round) {
 
@@ -28,6 +37,7 @@ void IPG::run(const int maxRound) {
 		popPool.sort(cmpByObjSecond());
 		popPool.sort(cmpByObjFirst());
 
+
 		cout << "pareto set:" << endl;
 		int j = 0;
 		for (auto iter = popPool.begin(); iter != popPool.end(); ++iter) {
@@ -39,9 +49,7 @@ void IPG::run(const int maxRound) {
 
 
 
-		if (i_round % 20) {
-			Sleep(4000);
-		}
+		//if (i_round % 20) Sleep(4000);
 		//char c; cin >> c;
 
 
@@ -51,8 +59,8 @@ void IPG::run(const int maxRound) {
 		//chosenChrom->code = vector<int>{ 0,0,0,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8 };
 		//chosenChrom->codeLen = 25;
 
-		vector<int> genesChrosen;
-		this->destruction(chosenChrom, genesChrosen);
+		vector<int> genesChosen;
+		this->destruction(chosenChrom, genesChosen);
 
 		cout << "codes:" << endl;
 		for (int i = 0; i < chosenChrom->code.size(); ++i) {
@@ -60,7 +68,7 @@ void IPG::run(const int maxRound) {
 		}
 		cout << endl;
 
-		cout << "  iter2:" << chosenChrom->objectValues.first << " " << chosenChrom->objectValues.second << endl;
+		cout << "  Iter= " << i_round <<"  : " << chosenChrom->objectValues.first << "--" << chosenChrom->objectValues.second << endl;
 
 
 		//const unsigned int num_thread = thread::hardware_concurrency();  // 获取硬件所支持的线程个数
@@ -69,13 +77,26 @@ void IPG::run(const int maxRound) {
 
 
 		list<Chromosome*> partialSoluSet;
-		//this->construction(partialSoluSet, chosenChrom, genesChrosen);
-		this->construction_Parallel(partialSoluSet, chosenChrom, genesChrosen, threadInfos);
+		//this->construction(partialSoluSet, chosenChrom, genesChosen);
+		//this->construction_Parallel(partialSoluSet, chosenChrom, genesChosen, threadInfos);
+		list<int> objValChange = this->construction_MultiParetos_Parallel(partialSoluSet, chosenChrom, genesChosen, threadInfos);
+
+		objValChanges.emplace_back(objValChange);
 
 
+		popPoolPre = popPool;
+
+		cout <<"updating--------------" << endl;
 		this->update(popPool, partialSoluSet);
+		cout << "finashed of updating--------------" << endl;
 
-
+		auto lastIter = popPool.end();
+		--lastIter;
+		objValsRecord.emplace_back(make_pair((*popPool.begin())->objectValues, (*lastIter)->objectValues));
+		if (popPoolPre == popPool)
+			isRenewRecord.emplace_back(false);
+		else
+			isRenewRecord.emplace_back(true);
 
 
 		j = 0;
@@ -85,6 +106,10 @@ void IPG::run(const int maxRound) {
 		}
 		cout << "end.." << endl;
 
+		cout << endl;
+		cout << "End of Iter " << i_round << " --------------------" << endl;
+		cout << endl; cout << endl;
+
 	}
 
 	endTime = clock();
@@ -92,6 +117,31 @@ void IPG::run(const int maxRound) {
 
 	cout << "The run time is: " << t_sec << "s  " << t_sec / 60 << "min" << endl;
 
+
+	cout << endl;
+	int index = 0;
+	auto isNewIter = isRenewRecord.begin();
+	for (auto& ele : objValsRecord) {
+		cout << "  index=" << ++index << "  " << ele.first.first << "--" << ele.first.second
+			<< "  " << ele.second.first << "--" << ele.second.second 
+			<<"    IsNew="<< *isNewIter << endl;
+		++isNewIter;
+	}
+	cout << endl; cout << endl;
+
+
+	isNewIter = isRenewRecord.begin();
+	++isNewIter;
+	index = 0;
+	cout << "每次迭代更新情况：" << endl;
+	for (auto& ele : objValChanges) {
+		cout << "  index=" << ++index << ":  ";
+		for(auto ele2:ele) {
+			cout << "  " << ele2; 
+		}
+		cout  <<"      IsNew=" << *isNewIter << endl;
+		++isNewIter;
+	}
 
 };
 
@@ -159,21 +209,21 @@ void IPG::randomlyCreateInitialSolution(const int numOfPop, Chromosome* chromPIn
 	//popPool[1] = chromPInit2;
 
 	// 排产结果1构成初始解
-	for (int i = 0; i < 0; ++i) {
+	for (int i = 0; i < 1; ++i) {
 		Chromosome* chromPInitnew = new Chromosome(totalLenOfChromCode, numOfJobRange);
 		popPool.emplace_back(chromPInitnew);
 		chromPInitnew->code.assign(chromPInit->code.begin(), chromPInit->code.end());
 	}
 
 	// 排产结果2构成初始解
-	for (int i = 1; i < 0; ++i) {
+	for (int i = 1; i < 2; ++i) {
 		Chromosome* chromPInitnew = new Chromosome(totalLenOfChromCode, numOfJobRange);
 		popPool.emplace_back(chromPInitnew);
 		chromPInitnew->code.assign(chromPInit2->code.begin(), chromPInit2->code.end());
 	}
 
 	// 随机生成初始解
-	for (int i_chrom = 0; i_chrom < 70; ++i_chrom) {
+	for (int i_chrom = 2; i_chrom < numOfPop; ++i_chrom) {
 		Chromosome* chromPInitnew = new Chromosome(totalLenOfChromCode, numOfJobRange);
 		popPool.emplace_back(chromPInitnew);
 		for (int i = 0; i < totalLenOfChromCode; ++i) {
@@ -190,7 +240,7 @@ void IPG::randomlyCreateInitialSolution(const int numOfPop, Chromosome* chromPIn
 	// 由初始排产结果，随机交换生成初始解
 	double rate = 0.1;  // 交换比例的一般
 	int numOfMove = totalLenOfChromCode * rate;
-	for (int i_chrom = 70; i_chrom < numOfPop; ++i_chrom) {
+	for (int i_chrom = numOfPop; i_chrom < numOfPop; ++i_chrom) {
 		Chromosome* chromPInitnew = new Chromosome(totalLenOfChromCode, numOfJobRange);
 		popPool.emplace_back(chromPInitnew);
 		chromPInitnew->code.assign(chromPInit->code.begin(), chromPInit->code.end());
@@ -201,7 +251,9 @@ void IPG::randomlyCreateInitialSolution(const int numOfPop, Chromosome* chromPIn
 		}
 	}
 
+	cout <<"popPoolnym" << endl;
 	this->initObjValsOfChromos();
+	cout << "   popPoolnym_initObjValsOfChromos" << endl;
 
 	return;
 };
@@ -209,7 +261,9 @@ void IPG::randomlyCreateInitialSolution(const int numOfPop, Chromosome* chromPIn
 
 void IPG::initObjValsOfChromos() {
 	list<Chromosome*>& popPool = this->popPool;
+	int i = 0;
 	for (auto& chromP : popPool) {
+		//cout << "chrom_i="<<i << endl;
 		this->edCodeP->getObjectValuesOfChromo(chromP, false);
 	}
 };
@@ -297,23 +351,23 @@ Chromosome* IPG::selection(list<Chromosome*>& paretoSoluSet) {
 };
 
 
-void IPG::destruction(Chromosome* chromChosen, vector<int>& genesChrosen) {
+void IPG::destruction(Chromosome* chromChosen, vector<int>& genesChosen) {
 	//const int nummin = 10;
 	//const int nummax = 15;
 
 	int num = (int)(nummax - nummin) * (1.0 * rand()) / (RAND_MAX + 1.0) + nummin;  // [0, 1)
 	cout << "  num Of gene: " << num << endl;
 
-	genesChrosen.reserve(num);
+	genesChosen.reserve(num);
 	set<int> genesSet;
 
 	for (int i = 0; i < num; i++) {
-		while (genesChrosen.size() <= i) {
+		while (genesChosen.size() <= i) {
 			const size_t& codeLen = chromChosen->code.size();
 			int index = (int)(codeLen * (1.0 * rand()) / (RAND_MAX + 1.0));  // [0, 1)
 			int gene = chromChosen->code[index];
 			if (genesSet.insert(gene).second) {  // 插入成功
-				genesChrosen.emplace_back(gene);
+				genesChosen.emplace_back(gene);
 
 				chromChosen->code.erase(chromChosen->code.begin() + index);
 				break;
@@ -323,7 +377,7 @@ void IPG::destruction(Chromosome* chromChosen, vector<int>& genesChrosen) {
 
 	cout << "  chosen genes:";
 	for (int i = 0; i < num; i++) {
-		cout << " " << i << ":gene=" << genesChrosen[i] << "  ";
+		cout << " " << i << ":gene=" << genesChosen[i] << "  ";
 	}
 	cout << endl;
 
@@ -331,9 +385,9 @@ void IPG::destruction(Chromosome* chromChosen, vector<int>& genesChrosen) {
 };
 
 
-void IPG::construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen) {
+void IPG::construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChosen) {
 	int codeLen = chromChosen->codeLen;
-	int num = (int)genesChrosen.size();
+	int num = (int)genesChosen.size();
 	cout << "    num=" << num << endl;
 
 	int subLen = codeLen - num;
@@ -345,7 +399,7 @@ void IPG::construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChose
 	partialSoluSet.emplace_back(chromChosen);
 
 	for (int i = 0; i < num; i++) {
-		int gene = genesChrosen[i];
+		int gene = genesChosen[i];
 		cout << "  i=" << i << "  gene:" << gene << endl;
 		int c = 0;
 		// 对每一个染色体都插入
@@ -396,13 +450,17 @@ void IPG::construction(list<Chromosome*>& partialSoluSet, Chromosome* chromChose
 };
 
 
-void IPG::construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChrosen, vector<threadInfoOfLS*>& threadInfos) {
+
+
+
+
+void IPG::construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChosen, vector<threadInfoOfLS*>& threadInfos) {
 	int codeLen = chromChosen->codeLen;
-	int num = (int)genesChrosen.size();
-	cout << "    num=" << num << endl;
+	int num = (int)genesChosen.size();
+	cout << "  NUM Of chosen genes=" << num << endl;
 
 	int subLen = codeLen - num;
-	cout << "    subLen=" << subLen << endl;
+	cout << "  SubLen=" << subLen << endl;
 
 
 	list<Chromosome*> partialSoluSetNew;
@@ -410,17 +468,23 @@ void IPG::construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* c
 
 
 	for (int i = 0; i < num; i++) {
-		cout << " num of Chroms in partialSoluSet: " << partialSoluSet.size() << endl;
-
-		int gene = genesChrosen[i];
-		cout << "  i=" << i << "  gene:" << gene << endl;
+		int gene = genesChosen[i];
+		cout << "    i_index Of chosen gene: " << i+1 << "  gene:" << gene << endl;
+		cout << "    num of Chroms in partialSoluSet: " << partialSoluSet.size() << endl;
+		int beforeSizeP = partialSoluSet.size();
+		
 		int c = 0;
 		// 对每一个染色体都插入
 		for (auto& curChrom : partialSoluSet) {
-			cout << "   chromToInsert-" << c++ << endl;
+			cout << "      index Of chrom in partialSoluSet: " << ++c << ";  totol size of partialSoluSet=" << partialSoluSet.size()<< endl;
+			int beforeSize = partialSoluSetNew.size();
 			// 对某染色体的所有可插入位置，都插入
 			this->insertToAChrom_Parellel(partialSoluSetNew, curChrom, gene, threadInfos);
-			cout << "   after-Solution-size=" << partialSoluSetNew.size() << endl;
+			cout << "      size of partialSoluSetNew after insert to partial Chrom "<< i+1 <<" :" << partialSoluSetNew.size()
+				<<"    before size=" << beforeSize << endl;
+			cout << "      num of partial Chroms left to insert: "<< partialSoluSet.size() -c << endl;
+			cout <<"      End of this partial Chroms' insertion!" << endl;
+			cout << endl;
 		}
 		// 保留非支配解
 		partialSoluSet.swap(partialSoluSetNew);
@@ -429,7 +493,12 @@ void IPG::construction_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* c
 		partialSoluSetNew.clear();
 
 		partialSoluSet.sort(cmpByObjFirst());
+		cout << endl;
+		cout << "    Before size Of partialSoluSet=" << beforeSizeP << "  After size=" << partialSoluSet.size() << endl;
+		cout << "    Num of Genes left to insert: " << num - i - 1 << endl;
+		cout << "    End of gene '"<<gene<<"' insertation; =========================================" << endl;
 
+		cout << endl;
 	}
 	// 保留非支配解
 	//getParetoSet(partialSoluSet);
@@ -444,11 +513,11 @@ void IPG::insertToAChrom_Parellel(list<Chromosome*>& partialSoluSetNew, Chromoso
 	int subLen = curChrom->code.size();
 
 	const int numOfThread = threadInfos.size();
-	cout << "    subLen=" << subLen << endl;
+	cout << "        subLen=" << subLen << endl;
 	vector<vector<Chromosome*>> chromsForThreads(numOfThread);
 
 	int t = 0;
-	// 对某染色体的所有可插入位置，都插入
+	// 对某染色体的所有可插入位置，都插入，得到所有新的部分解对应的染色体
 	for (int pos = 0; pos < subLen; ++pos) {
 		Chromosome* chromNew = new Chromosome(curChrom);
 		chromNew->code.insert(chromNew->code.begin() + pos, gene);
@@ -462,24 +531,24 @@ void IPG::insertToAChrom_Parellel(list<Chromosome*>& partialSoluSetNew, Chromoso
 
 	vector<thread> threads(numOfThread);
 
+	// 把染色体分配给各个线程，分别计算目标值
 	for (int t = 0; t < numOfThread; ++t) {
-		cout << "    numsOfChromoOfAthread=" << chromsForThreads[t].size() << endl;
+		cout << "        numsOfChromoOfAthread=" << chromsForThreads[t].size() << endl;
 		threads[t] = thread(IPG::calculateTempChroms_thread, chromsForThreads[t], threadInfos[t]);
 	}
 
-	for (int t = 0; t < numOfThread; ++t) {
+	for (int t = 0; t < numOfThread; ++t)
 		threads[t].join();
-		cout << "    after-Solution-size=" << partialSoluSetNew.size() << endl;
-	}
 
+	// 对于每一个染色体，检查目标值，看能否放入部分解的帕雷多解集
 	for (int i = 0; i < chromsForThreads.size(); ++i) {
+		cout << "        thread: " << i << endl;
 		for (int j = 0; j < chromsForThreads[i].size(); ++j) {
 			Chromosome* chromTmp = chromsForThreads[i][j];
-
 			bool result = IPG::insertToParetoSet(partialSoluSetNew, chromTmp);
-			cout << "  i=" << i << "  j=" << j
-				<< "  objs:" << chromTmp->objectValues.first << "__" << chromTmp->objectValues.second
-				<< "  result=" << result << "  soluSize=" << partialSoluSetNew.size() << endl;
+			cout << "          i=" << i << "  j=" << j
+				<< "    objs:" << chromTmp->objectValues.first << "__" << chromTmp->objectValues.second
+				<< "    result=" << result << "  soluSize=" << partialSoluSetNew.size() << endl;
 
 			if (result == false)
 				delete chromTmp;
@@ -492,6 +561,7 @@ void IPG::insertToAChrom_Parellel(list<Chromosome*>& partialSoluSetNew, Chromoso
 
 };
 
+
 void IPG::calculateTempChroms_thread(vector<Chromosome*>& chromsForThread, threadInfoOfLS* threadInfoP) {
 
 	for (int i = 0; i < chromsForThread.size(); ++i) {
@@ -501,6 +571,252 @@ void IPG::calculateTempChroms_thread(vector<Chromosome*>& chromsForThread, threa
 		EDCode::getObjectValuesOfChromo_Parallel(chromTmp, threadInfoP, false);
 	}
 };
+
+
+
+
+
+
+
+list<int> IPG::construction_MultiParetos_Parallel(list<Chromosome*>& partialSoluSet, Chromosome* chromChosen, vector<int>& genesChosen, vector<threadInfoOfLS*>& threadInfos) {
+	int codeLen = chromChosen->codeLen;
+	int numOfChosenGene = (int)genesChosen.size();
+	cout << "  NUM Of chosen genes=" << numOfChosenGene << endl;
+
+	int subLen = codeLen - numOfChosenGene;
+	cout << "  SubLen=" << subLen << endl;
+
+
+	list<Chromosome*> partialSoluSetNew;
+	partialSoluSet.emplace_back(chromChosen);
+
+	list<int> objValChange;
+
+
+	for (int i = 0; i < numOfChosenGene; i++) {
+		int gene = genesChosen[i];
+		cout << "    i_index Of chosen gene: " << i + 1 << "  gene:" << gene << endl;
+		cout << "    num of Chroms in partialSoluSet: " << partialSoluSet.size() << endl;
+		int beforeSizeP = partialSoluSet.size();
+
+		int c = 0;
+		// 对每一个染色体都插入
+		for (auto& curChrom : partialSoluSet) {
+			cout << "      index Of chrom in partialSoluSet: " << ++c << ";  totol size of partialSoluSet=" << partialSoluSet.size() << endl;
+			int beforeSize = partialSoluSetNew.size();
+			// 对某染色体的所有可插入位置，都插入
+			this->insertToAChrom__MultiParetos_Parellel(partialSoluSetNew, curChrom, gene, threadInfos);
+			cout << "      size of partialSoluSetNew after insert to partial Chrom " << i + 1 << " :" << partialSoluSetNew.size()
+				<< "    before size=" << beforeSize << endl;
+			cout << "      num of partial Chroms left to insert: " << partialSoluSet.size() - c << endl;
+			cout << "      End of this partial Chroms' insertion!" << endl;
+			cout << endl;
+		}
+
+		cout<<" 目标值：" << endl;
+		for (Chromosome* chromP : partialSoluSetNew)
+			cout << "  " << chromP->objectValues.first << "--" << chromP->objectValues.second << endl;
+
+		// 去重--目标值相同的染色体只保留一个
+		set<pair<double, double>> objValsSet;
+		auto iter = partialSoluSetNew.begin();
+		for (;iter!= partialSoluSetNew.end();) {
+			Chromosome* chromP = *iter;
+			if (objValsSet.find(chromP->objectValues) != objValsSet.end()) {  // ？？！！去重部分--直接删除，或者替换
+				iter = partialSoluSetNew.erase(iter);   
+				delete chromP;
+				if (iter == partialSoluSetNew.end())  break;
+			}
+			else {
+				objValsSet.emplace(chromP->objectValues);
+				++iter;
+			}
+		}
+		cout << " 目标值（去重之后）：" << endl;
+		for (Chromosome* chromP : partialSoluSetNew)
+			cout << "  " << chromP->objectValues.first << "--" << chromP->objectValues.second << endl;
+		cout << "finised 去重" << endl;
+
+
+		const int maxNumOfPop = 5;
+		if (numOfChosenGene - i > 5)
+			choseByPareto(partialSoluSet, partialSoluSetNew);                      // 选择-通过帕雷多层数和拥挤度挑选
+		else
+			choseByMultiParetos(partialSoluSet, partialSoluSetNew, maxNumOfPop);   // 选择-通过帕雷多层数和拥挤度挑选
+
+
+		cout << "finised 帕雷多" << endl;
+
+		partialSoluSet.sort(cmpByObjFirst());
+		partialSoluSet.sort(cmpByObjSecond());
+
+		for (Chromosome* chromP : partialSoluSet)
+			cout << "  " << chromP->objectValues.first << "--" << chromP->objectValues.second << endl;
+		
+		cout << endl;
+		cout << "    Before size Of partialSoluSet=" << beforeSizeP << "  After size=" << partialSoluSet.size() << endl;
+		cout << "    Num of Genes left to insert: " << numOfChosenGene - i - 1 << endl;
+		cout << "    End of gene '" << gene << "' insertation; =========================================" << endl;
+
+		cout << endl;
+
+
+
+		auto lastIter = partialSoluSet.end();
+		auto lastIter2 = popPool.end();
+		--lastIter; --lastIter2;
+		if ( (*partialSoluSet.begin())->objectValues.first < (*popPool.begin())->objectValues.first
+			|| (*lastIter)->objectValues.second < (*lastIter2)->objectValues.second) {
+			objValChange.emplace_back(1);
+		}
+		else {
+			objValChange.emplace_back(0);
+		}
+	}
+	// 保留非支配解
+	getParetoSet(partialSoluSet);
+	cout << "9999999999999999999999999999999999999999999999999999999" << endl;
+	//char c4; cin >> c4;
+	return objValChange;
+};
+
+
+// 对一个染色体进行插入，得到所有新的（部分解对应的）染色体
+void IPG::insertToAChrom__MultiParetos_Parellel(list<Chromosome*>& partialSoluSetNew, Chromosome* curChrom, int gene, vector<threadInfoOfLS*>& threadInfos) {
+
+
+	int subLen = curChrom->code.size();
+
+	const int numOfThread = threadInfos.size();
+	cout << "      subLen=" << subLen << endl;
+	vector<vector<Chromosome*>> chromsForThreads(numOfThread);
+
+	int increment = rand() % 10;
+	int t = 0;
+	// 对某染色体的所有可插入位置，都插入，得到所有新的部分解对应的染色体
+	for (int pos = 0; pos < subLen; ++pos) {
+		Chromosome* chromNew = new Chromosome(curChrom);
+		chromNew->code.insert(chromNew->code.begin() + pos, gene);
+
+		partialSoluSetNew.emplace_back(chromNew);  // 放入部分解的解集中
+
+		chromsForThreads[t % numOfThread].emplace_back(chromNew);
+		++t;
+
+		//int indexJump = rand() % 20;
+		int indexJump = rand() % 40 + increment;
+		pos += indexJump;
+	}
+
+	vector<thread> threads(numOfThread);
+
+	// 把染色体分配给各个线程，分别计算目标值
+	for (int t = 0; t < numOfThread; ++t) {
+		cout << "        numsOfChromoOfAthread=" << chromsForThreads[t].size() << endl;
+		threads[t] = thread(IPG::calculateTempChroms_thread, chromsForThreads[t], threadInfos[t]);
+	}
+
+	for (int t = 0; t < numOfThread; ++t)
+		threads[t].join();
+
+	cout << endl;
+	return;
+
+};
+
+
+void IPG::choseByMultiParetos(list<Chromosome*>& partialSoluSet, list<Chromosome*>& partialSoluSetNew, const int maxNumOfPop) {
+	
+	cout << "  partialSoluSet.size()=" << partialSoluSet.size() << endl;
+
+	for (auto& ele:partialSoluSet) {
+		cout<<" partialsolut: " << ele->objectValues.first << " " << ele->objectValues.second << endl;
+		Chromosome* chrom = ele;
+		cout<< chrom <<endl;
+	}
+
+	for (auto& chromP : partialSoluSet)	delete chromP;
+		
+	cout << "  cvvvvvvvvvvv" << endl;
+	partialSoluSet.clear();
+
+	cout << "  ioooooooo" << endl;
+	cout << "  partialSoluSetNew.size()=" << partialSoluSetNew.size() << endl;
+	if (partialSoluSetNew.size() <= maxNumOfPop) {
+		cout << "  tyyyyyyyyyyy" << endl;
+		// 保留非支配解
+		partialSoluSet.swap(partialSoluSetNew);
+		return;
+	}
+	vector<set<Chromosome*>> paretoPlanes;
+
+	cout << "  开始快速非支配排序......" << endl;
+	fastNondominationSort(partialSoluSetNew, paretoPlanes);
+
+	int index_plane=1;
+	int curSize = 0;
+	vector<pair<Chromosome*, double>> crowdingDistances;  // 拥挤度
+	for (auto iter = paretoPlanes.begin(); iter != paretoPlanes.end(); ++iter) {
+		crowdingDistances.clear();
+
+		set<Chromosome*>& curPlane = *iter;
+
+		cout << "    plane "<< index_plane++ <<endl;
+		if (curSize == maxNumOfPop) {    // 对于多于的染色体，进行析构
+			for (auto curChrom : curPlane)  
+				delete curChrom;
+			continue;
+		}
+		/*
+		if (planeSize + curSize <= maxNumOfPop) {  // 全部放入
+			for (auto chromP : curPlane)
+				partialSoluSet.emplace_back(chromP);
+			curSize += planeSize;
+		}
+		*/
+		getDensityEstimation(curPlane, crowdingDistances);    // 计算拥挤度
+
+		for (auto& chromInfo : crowdingDistances){
+			Chromosome* chromP = chromInfo.first;
+			if (curSize < maxNumOfPop && chromInfo.second != 0.0) {  // 放入
+				partialSoluSet.emplace_back(chromP);
+				cout << "      放入下一个解集的染色体：" << chromP << endl;
+				++curSize;
+			}
+			else                          // 删除
+				delete chromP;
+		}
+	}
+	partialSoluSetNew.clear();
+	return;
+}
+
+
+void IPG::choseByPareto(list<Chromosome*>& partialSoluSet, list<Chromosome*>& partialSoluSetNew) {
+
+	cout << "  partialSoluSet.size()=" << partialSoluSet.size() << endl;
+
+	for (auto& ele : partialSoluSet) {
+		cout << " partialsolut: " << ele->objectValues.first << " " << ele->objectValues.second << endl;
+		Chromosome* chrom = ele;
+		cout << chrom << endl;
+	}
+
+	for (auto& chromP : partialSoluSet)	delete chromP;
+
+	partialSoluSet.clear();
+
+	this->getParetoSet(partialSoluSetNew);
+
+	partialSoluSet.swap(partialSoluSetNew);
+	partialSoluSetNew.clear();
+
+	return;
+}
+
+
+
+
 
 
 
@@ -595,6 +911,8 @@ void IPG::getObjVals_test(Chromosome* chromNew) {
 	chromNew->objectValues.second = obj2;
 
 };
+
+
 
 
 

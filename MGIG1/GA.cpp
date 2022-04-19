@@ -395,6 +395,7 @@ void GeneticAlgorithm::chosenChromsByTournament(const int numOfChromsToChose, co
 		fitnessArr[i] = fitness;
 	}
 
+	
 	// 按照轮盘赌方法选择染色体
 	int index = 0;
 	for (; index < numOfChromsToChose;) {
@@ -409,8 +410,10 @@ void GeneticAlgorithm::chosenChromsByTournament(const int numOfChromsToChose, co
 	}
 };
 
-// 锦标赛选择，挑选不好的扔出来
-void GeneticAlgorithm::chosenChromsByTournament2(const int numOfChromsToChose, const int numOfPop, vector<Chromosome*>& popPool, vector<int>& chosenChroms, int isPutBack) {
+// 锦标赛选择，挑选不好的进行剔除
+void GeneticAlgorithm::chosenChromsByTournamentReject(const int numOfChromsToChose, const int numOfPop, vector<Chromosome*>& popPool, vector<int>& chosenChroms
+	, const int numElites, int isPutBack)
+{
 	//static double coeff_pressure = coeff_pressure * coeff_pressureBaseNum;
 	double coeff_pressure = this->m_coeff_pressure;
 	double coeff_additionalNum = this->m_coeff_additionalNum;
@@ -433,10 +436,12 @@ void GeneticAlgorithm::chosenChromsByTournament2(const int numOfChromsToChose, c
 		fitnessArr[i] = fitness;
 	}
 
-	cout << "yiosdfugh" << endl;
+	//cout << "yiosdfugh" << endl;
 	// 按照轮盘赌方法选择染色体
-	set<int> dropPool;
-	for (; dropPool.size() < numToDrop;) {
+	set<int> dropPool;  // 记录要剔除的染色体的索引
+	for (int i = 0; i < numElites; ++i)   // 前numElites个精英已经放进去了，这里要drop!
+		dropPool.emplace(i);
+	for (; dropPool.size() < numToDrop + numElites;) { // 要剔除numToDrop + numElites
 		int indexOfChrom = -1;
 		int p1 = numOfPop * (rand() * 1.0) / (double)(RAND_MAX + 1.0);
 		int p2 = numOfPop * (rand() * 1.0) / (double)(RAND_MAX + 1.0);
@@ -444,21 +449,25 @@ void GeneticAlgorithm::chosenChromsByTournament2(const int numOfChromsToChose, c
 			indexOfChrom = p1;
 		else
 			indexOfChrom = p2;
-		dropPool.insert(indexOfChrom);
 
+		dropPool.insert(indexOfChrom);
 		cout << indexOfChrom << ' ';
 	}
 
 	cout << endl;
 	int index = 0;
-	for (int i = 0; i < numOfPop; ++i) {
+
+	//cout << " numElites="<< numElites<< "  dropPool.size()=" << dropPool.size() <<"  chosenChroms.size()="<< chosenChroms.size() <<"  numOfPop=" << numOfPop << endl;
+
+	for (int i = 0; i < numElites; ++i)   // 前numElites个精英已经放进去了，这里要drop!
+		chosenChroms[index++] = i;
+
+	for (int i = numElites; i < numOfPop; ++i) {
 		if (dropPool.find(i) != dropPool.end()) continue;
 		chosenChroms[index++] = i;
-		cout << i << ' ';
 	}
-	cout << "  index=" << index << endl;
 
-	cout << "end" << endl;
+	//cout << "end" << endl;
 
 };
 
@@ -1031,6 +1040,7 @@ void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, const int max
 }
 */
 
+
 // 对一个染色体做局部搜索
 void GeneticAlgorithm::localSearchForCurChrome(Chromosome* chromP, GeneticAlgorithm* gaP, const int maxIter) {
 	//const int totalLenOfGACode = this->m_totalLenOfGACode;
@@ -1170,7 +1180,8 @@ void GeneticAlgorithm::localSearch_AThread(vector<Chromosome*>& chromPVec, Genet
 
 	for (int i = 0; i < chromPVec.size(); ++i) {
 		Chromosome* chromP = chromPVec[i];
-		localSearchForCurChrome_Parallel(chromP, gaP, maxIter, threadInfoP);
+		//localSearchForCurChrome_Parallel(chromP, gaP, maxIter, threadInfoP);
+		localSearchForCurChrome_Parallel_DueObjs(chromP, gaP, maxIter, threadInfoP);
 
 		//resetMachsMapTemp(threadInfoP->m_machsMapTmp, *(gaP->m_machsMapBefP));
 		//resetJobsTemp(threadInfoP->m_jobOrderTmp, *(gaP->m_jobOrderBefP));
@@ -1322,12 +1333,14 @@ void GeneticAlgorithm::getObjValForChilds() {
 	}
 };
 
-//选择下一代，同时保留精英
-void GeneticAlgorithm::selectForNextGeneration() {
+// 通过 锦标赛选择法(放回) 或 轮盘赌选择法(放回) 选择下一代，同时保留精英
+void GeneticAlgorithm::selectionForNextPop() {
 	const int numOfPop = this->m_numOfPop;
 	const int numOfParentsForCroOver = this->m_numForCrossOver;
 	const int numOfParentsForMutation = this->m_numForMutation;
 	const int numElites = this->m_numElites;
+	const int lenOfGACode = this->m_totalLenOfGACode;
+	const int rangeOfJob = (*this->m_popPool.begin())->rangeOfJob;
 
 	vector<Chromosome*>& popPool = this->m_popPool;
 	vector<Chromosome*>& childsForCroOver = this->m_childsForCroOver;
@@ -1344,110 +1357,125 @@ void GeneticAlgorithm::selectForNextGeneration() {
 	for (auto ele : childsForCroOver) popPoolNew[i++] = ele;
 	sort(popPoolNew.begin(), popPoolNew.end(), GeneticAlgorithm::compareChrom);
 
-	vector<int> postionOfChosenChroms(numOfPop);
-	chosenChromsByTournament2(numOfPop, totalSize, popPoolNew, postionOfChosenChroms, 0);
+	vector<int> postionOfChosenChroms(numOfPop - numElites);
+	this->chosenChromsByTournament(numOfPop - numElites, totalSize, popPoolNew, postionOfChosenChroms, 0);
+	//this->chosenChromsByRoulette(numOfPop - numElites, totalSize, popPoolNew, postionOfChosenChroms, 0);
 
 
-	// 保留中前numElites个精英
-	for (int i = 0; i < numElites; ++i) {
-		if(rand()%(i+1) == 0)
-			popPool[i] = popPoolNew[i];
+	set<Chromosome*> chromsChosenSet;      // 存放已经从popPoolNew中选出的Chromsome*
+	for (int i = 0; i < numElites; ++i) {  // 保留中前numElites个精英
+		popPool[i] = popPoolNew[i];
+		chromsChosenSet.insert(popPoolNew[i]);
 		cout << " " << popPool[i]->objectValues.second << endl;
 	}
 
 	for (int i = numElites; i < numOfPop; ++i) {
-		int posOfChosenChrom = postionOfChosenChroms[i];
-		popPool[i] = popPoolNew[posOfChosenChrom];
+		int posOfChosenChrom = postionOfChosenChroms[i- numElites];
+		Chromosome* chromP = popPoolNew[posOfChosenChrom];
+		auto res = chromsChosenSet.insert(chromP);
+		if (res.second)  // chromP被成功放入chromsChosenSet
+			popPool[i] = popPoolNew[posOfChosenChrom];
+		else {           // chromP已经在chromsChosenSet里了
+			Chromosome* chromP2 = new Chromosome(chromP);
+			popPool[i] = chromP2;
+		}
 		cout << " uobj=" << posOfChosenChrom << " " << popPool[i]->objectValues.second << endl;
 	}
 	cout << " *****h8**8888" << endl;
+	cout << "  chromsChosenSet.size()="<< chromsChosenSet.size() << endl;
+	//char ct; cin >> ct;
 
-	// 1/5+约1/200的概率保留每个交叉个体
-	//for (int i = 0; i < numOfParentsForCroOver; i++) 
-	for (int i = 0; i < 0; i++)
-	{
-		int randPos = (totalSize - numElites) * (rand() * 1.0) / (double)(RAND_MAX + 1.0);
-		randPos += numElites;
-		if (rand() % 5 == 0) popPoolNew[randPos] = childsForCroOver[i];
-	}
-
-	// 1/2+约1/200的概率保留每个变异个体
-	//for (int i = 0; i < numOfParentsForMutation; ++i) 
-	for (int i = 0; i < 0; ++i)
-	{
-		int randPos = (totalSize - numElites) * (rand() * 1.0) / (double)(RAND_MAX + 1.0);
-		randPos += numElites;
-		if (rand() % 5 == 0) popPoolNew[randPos] = childsForMutation[i];
+	// 对popPoolNew中没有被选择的Chromosome进行析构
+	for (auto chromP: popPoolNew) {
+		if (chromsChosenSet.find(chromP) == chromsChosenSet.end())
+			delete chromP;
 	}
 
 	// 为交叉变异分配空的染色体对象
-	set<Chromosome*> chosenChromsSet(popPool.begin(), popPool.end());
-	int j = 0;
-	for (auto& ele : totalChromsSet) {
-		if ((chosenChromsSet.find(ele) == chosenChromsSet.end()) && (totalChromsSet.find(ele) != totalChromsSet.end()))
-		{
-			childsForCroOver[j++] = ele;
-			if (j == numOfParentsForCroOver) break;
-		}
+	for (int i = 0; i < numOfParentsForCroOver; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForCroOver[i] = chromP;
 	}
-	j = 0;
-	for (auto& ele : totalChromsSet) {
-		if ((chosenChromsSet.find(ele) == chosenChromsSet.end()) && (totalChromsSet.find(ele) != totalChromsSet.end()))
-		{
-			childsForMutation[j++] = ele;
-			if (j == numOfParentsForMutation) break;
-		}
+	for (int i = 0; i < numOfParentsForMutation; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForMutation[i] = chromP;
 	}
+
+
+	// 更新种群
+	//popPool = popPoolNew;
+	cout << "kkeiweie" << endl;
+};
+
+// 通过“锦标赛剔除法”选择下一代，同时保留精英
+void GeneticAlgorithm::selection_ByTournamentReject() {
+	const int numOfPop = this->m_numOfPop;
+	const int numOfParentsForCroOver = this->m_numForCrossOver;
+	const int numOfParentsForMutation = this->m_numForMutation;
+	const int numElites = this->m_numElites;
+	const int lenOfGACode = this->m_totalLenOfGACode;
+	const int rangeOfJob = (*this->m_popPool.begin())->rangeOfJob;
+
+	vector<Chromosome*>& popPool = this->m_popPool;
+	vector<Chromosome*>& childsForCroOver = this->m_childsForCroOver;
+	vector<Chromosome*>& childsForMutation = this->m_childsForMutation;
+	vector<Chromosome*>& popPoolNew = this->m_popPoolNew;
+	set<Chromosome*>& totalChromsSet = this->m_totalChromsSet;
+	vector<Chromosome*>& eliteChroms = this->m_eliteChroms;
+
+	int totalSize = numOfPop + numOfParentsForMutation + numOfParentsForCroOver;
+	cout << "dfdfffk" << totalSize << endl;
+	int i = 0;
+	for (auto ele : popPool) popPoolNew[i++] = ele;
+	for (auto ele : childsForMutation) popPoolNew[i++] = ele;
+	for (auto ele : childsForCroOver) popPoolNew[i++] = ele;
+	sort(popPoolNew.begin(), popPoolNew.end(), GeneticAlgorithm::compareChrom);
+
+
+	set<Chromosome*> chromsChosenSet;  // 存放已经从popPoolNew中选出的Chromsome*
+
+	vector<int> postionOfChosenChroms(numOfPop);
+	this->chosenChromsByTournamentReject(numOfPop, totalSize, popPoolNew, postionOfChosenChroms, numElites, 0);
 
 	/*
-	Chromosome* chrom1, * chrom2;
-	for (int j = 0; j  < numOfPop; ++j) {
-		int position1 = totalSize * (rand() * 1.0) / (RAND_MAX + 1.0);
-		int position2 = totalSize * (rand() * 1.0) / (RAND_MAX + 1.0);
-		cout << "j = " << j <<endl;
-		cout << "  position1="<< position1 <<endl;
-		cout << "  position2=" << position2 << endl;
-		if (position1 == position2) { --j; continue; }
-
-		if (position1 < numOfPop) chrom1 = popPool[position1];
-		else if (position1 < (numOfPop + numOfParentsForMutation))  chrom1 = childsForMutation[position1- numOfPop];
-		else  chrom1 = childsForCroOver[position2 - numOfPop - numOfParentsForMutation];
-
-		if (position2 < numOfPop) chrom2 = popPool[position2];
-		else if (position2 < (numOfPop + numOfParentsForMutation))  chrom2 = childsForMutation[position2- numOfPop];
-		else  chrom2 = childsForCroOver[position2 - numOfPop - numOfParentsForMutation];
-
-		if (chrom1->objectValues.first < chrom2->objectValues.first) {
-			posOfChoosenChoms.insert(chrom1);
-			popPoolNew[j] = chrom1;
-			posOfChoosenChom.insert(position1);
-			popPoolTmps[j] = position1;
-		}
-		else {
-			posOfChoosenChoms.insert(chrom2);
-			popPoolNew[j] = chrom2;
-			posOfChoosenChom.insert(position2);
-			popPoolTmps[j] = position2;
-		}
+	sort(postionOfChosenChroms.begin(), postionOfChosenChroms.end(), [](int a, int b) {return a < b; });
+	cout << "postionOfChosenChroms:" << endl;
+	for (int i = 0; i < numOfPop; ++i) {
+		cout << " "<<postionOfChosenChroms[i] ;
 	}
+	cout << "  numElites="<< numElites << endl;
+	cout<< "  postionOfChosenChroms .size()=" << postionOfChosenChroms.size() << endl;
+	cout << endl;
+	char cr; cin >> cr;
+	cout << endl;
 	*/
 
-	/*
-	// 释放内存
-	for (auto& ele : popPool) {
-		Chromosome* chrom = ele;
-		if (posOfChoosenChoms.find(chrom) == posOfChoosenChoms.end()) delete chrom;
+	for (int i = 0; i < numOfPop; ++i) {
+		int posOfChosenChrom = postionOfChosenChroms[i];
+		Chromosome* chromP = popPoolNew[posOfChosenChrom];
+		chromsChosenSet.insert(chromP);
+		popPool[i] = chromP;
+		//cout << " uobj=" << posOfChosenChrom << " " << popPool[i]->objectValues.second << endl;
+	}
+	//cout << " *****h8**8888" << endl;
+
+
+	// 对popPoolNew中没有被选择的Chromosome进行析构
+	for (auto chromP: popPoolNew) {
+		if (chromsChosenSet.find(chromP) == chromsChosenSet.end())
+			delete chromP;
 	}
 
-	cout << "giii" << endl;
-	for (auto ele : childsForMutation)
-		if (posOfChoosenChoms.find(ele) == posOfChoosenChoms.end()) delete ele;
-	cout << "zdddd" << endl;
-	for (auto ele : childsForCroOver)
-		if (posOfChoosenChoms.find(ele) == posOfChoosenChoms.end()) delete ele;
-	cout << "jbbbjb" << endl;
+	// 为交叉变异分配空的染色体对象
+	for (int i = 0; i < numOfParentsForCroOver; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForCroOver[i] = chromP;
+	}
+	for (int i = 0; i < numOfParentsForMutation; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForMutation[i] = chromP;
+	}
 
-	*/
 
 	// 更新种群
 	//popPool = popPoolNew;
@@ -1460,19 +1488,42 @@ void GeneticAlgorithm::printBestObjVal() {
 	int iter = this->m_curGeneration;
 
 	double minObjVal = DBL_MAX;
+	double minObjVal2 = DBL_MAX;
 	Chromosome* bestChrom = nullptr;
-	cout << "  Objectives of the chromesomes are:" << endl;
+	Chromosome* bestChrom2 = nullptr;
+
+
+	/*	cout << "  Objectives of the chromesomes are:" << endl;
 	for (auto& chromP : popPool) {
 		if (minObjVal > chromP->objectValues.second) {
 			minObjVal = chromP->objectValues.second;
 			bestChrom = chromP;
 		}
 		cout << chromP->objectValues.second << " ";
+	}*/
+
+	int index = 0;
+	cout << "  Objectives of the chromesomes are:" << endl;
+	for (auto& chromP : popPool) {
+		if (minObjVal > chromP->objectValues.second) {
+			minObjVal = chromP->objectValues.second;
+			bestChrom = chromP;
+		}
+		if (minObjVal2 > chromP->objectValues.first) {
+			minObjVal2 = chromP->objectValues.first;
+			bestChrom2 = chromP;
+		}
+		cout << "    index="<< ++index <<"  totalSwitchT = " << chromP->objectValues.first << "  makesapn = " << chromP->objectValues.second << " "<<endl;
 	}
+
+
+
 	recordOfBestObjVals.emplace_back(bestChrom->objectValues);
 
 	cout << endl;
-	cout << "  The best objecive value in iteration " << iter << " is: " << minObjVal << endl;
+	cout << "  The best objecive value in iteration " << iter << " is: " 
+		<< bestChrom2->objectValues.first << "--" << bestChrom2->objectValues.second <<";  "
+		<< bestChrom->objectValues.first <<"--" << bestChrom->objectValues.second << endl;
 	cout << "    The best solution in iteration " << iter << " is: " << endl;
 	for (int i = 0; i < bestChrom->codeLen; ++i) {
 		cout << bestChrom->code[i] << " ";
@@ -1497,7 +1548,7 @@ void GeneticAlgorithm::runGA() {
 
 	for (; curGeneration <= totalGeneration; ++curGeneration) {
 		cout << "CurGeneration=" << curGeneration << endl;
-		char a; cin >> a;
+		//char a; cin >> a;
 		//break;
 		
 		//this->localSearch();
@@ -1516,8 +1567,13 @@ void GeneticAlgorithm::runGA() {
 		cout << " mutationOfPop" << endl;
 		this->getObjValForChilds();
 		cout << " getObjValForChilds" << endl;
-		this->selectForNextGeneration();
-		cout << " selectForNextGeneration" << endl;
+
+		this->selection_ByTournamentReject();
+		cout << " selection_ByTournamentReject" << endl;
+
+		//this->selectionForNextPop();
+		//cout << " selectionForNextPop" << endl;
+
 		this->printBestObjVal();
 
 		// if (curGeneration == 40) break;
@@ -1548,6 +1604,261 @@ void GeneticAlgorithm::runGA() {
 
 
 
+
+
+
+
+
+
+// 对一个染色体做局部搜索
+void GeneticAlgorithm::localSearchForCurChrome_Parallel_DueObjs(Chromosome* chromP, GeneticAlgorithm* gaP, const int maxIter, threadInfoOfLS* threadInfoP) {
+	//const int totalLenOfGACode = this->m_totalLenOfGACode;
+	const int totalLenOfGACode = chromP->codeLen;
+	Chromosome* chromPTmp = new Chromosome(chromP->codeLen, chromP->rangeOfJob);
+
+	cout << "thread_" << std::this_thread::get_id() << endl;
+
+	bool isRenew = false;
+	chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
+
+	//cout << " maxIter=" << maxIter << endl;
+	//cout << "    before--" << "obj_makespan=" << chromP->objectValues.second
+	//	<< " obj_tardiness=" << chromP->objectValues.first << endl;
+
+	for (int iter = 0; iter < maxIter; ++iter) {
+
+		int tmp = rand() % 7;
+		//int tmp = rand() % 3;
+
+		//cout <<  "  tmp=" << tmp << endl;
+		if (tmp == 0)
+			GeneticAlgorithm::getNeighborByReverse(chromPTmp, totalLenOfGACode);
+		else if (tmp == 1)
+			GeneticAlgorithm::getNeighborByExchangeSub(chromPTmp, totalLenOfGACode);
+		else if (tmp == 2)
+			GeneticAlgorithm::getNeighborByReinsertSub(chromPTmp, totalLenOfGACode);
+		else if (tmp == 3 || tmp == 4)
+			GeneticAlgorithm::getNeighborByExchangeTwo(chromPTmp, totalLenOfGACode);
+		else
+			GeneticAlgorithm::getNeighborByReinsertOne(chromPTmp, totalLenOfGACode);
+
+		//cout<<"tty"<<endl;
+		//getObjectValuesOfChromo(chromPTmp, gaP);
+		getObjectValuesOfChromo_Parallel(chromPTmp, gaP, threadInfoP);
+		//cout << "ppo" << endl;
+
+		//cout << " iter=" << iter  << endl;
+		isRenew = false;
+		// 如果好，则更新
+		if ((chromPTmp->objectValues.second < chromP->objectValues.second && chromPTmp->objectValues.first <= chromP->objectValues.first)
+			|| (chromPTmp->objectValues.second <= chromP->objectValues.second && chromPTmp->objectValues.first < chromP->objectValues.first)) {
+
+			chromP->code.assign(chromPTmp->code.begin(), chromPTmp->code.end());
+
+			chromP->objectValues = chromPTmp->objectValues;
+			chromP->tardinessOfjobs.assign(chromPTmp->tardinessOfjobs.begin(), chromPTmp->tardinessOfjobs.end());
+			chromP->delayJobs = chromPTmp->delayJobs;
+			isRenew = true;
+
+			//cout<<"    isRenew=" << isRenew << endl;
+			//cout << "    chromPTmp->objectValues.first(dueTime) =" << chromPTmp->objectValues.second << endl;
+		}
+		else {
+			chromPTmp->code.assign(chromP->code.begin(), chromP->code.end());
+		}
+		//cout << "   end" << endl;
+
+		if (isRenew) {
+			//cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+			//	<< " obj_tardiness=" << chromP->objectValues.first << endl;
+			break;
+		}
+	}
+
+	//cout << "    after--" << "obj_makespan=" << chromP->objectValues.second
+	//	<< " obj_tardiness=" << chromP->objectValues.first << endl;
+	delete chromPTmp;
+	return;
+};
+
+
+//建立多层pareto前沿面，按照帕雷多层数和挤度选择下一代；
+void GeneticAlgorithm::selectForNextGeneration_byParetoPlanes() {
+
+	const int numOfPop = this->m_numOfPop;
+	const int numOfParentsForCroOver = this->m_numForCrossOver;
+	const int numOfParentsForMutation = this->m_numForMutation;
+	const int numElites = this->m_numElites;
+	const int lenOfGACode = this->m_totalLenOfGACode;
+	const int rangeOfJob= (*this->m_popPool.begin())->rangeOfJob;
+
+	vector<Chromosome*>& popPool = this->m_popPool;
+	vector<Chromosome*>& childsForCroOver = this->m_childsForCroOver;
+	vector<Chromosome*>& childsForMutation = this->m_childsForMutation;
+	vector<Chromosome*>& popPoolNew = this->m_popPoolNew;
+	set<Chromosome*>& totalChromsSet = this->m_totalChromsSet;
+	vector<Chromosome*>& eliteChroms = this->m_eliteChroms;
+
+
+	cout << "  numOfPoppp=" << numOfPop << endl;
+	int totalSize = numOfPop + numOfParentsForMutation + numOfParentsForCroOver;
+	cout << "dfdfffk totalSize=" << totalSize << endl;
+	int i = 0;
+	for (auto ele : popPool) popPoolNew[i++] = ele;
+	for (auto ele : childsForMutation) popPoolNew[i++] = ele;
+	for (auto ele : childsForCroOver) popPoolNew[i++] = ele;
+	//sort(popPoolNew.begin(), popPoolNew.end(), GeneticAlgorithm::compareChrom);
+
+	cout << "  xkddyddhc=" << numOfPop << endl;
+
+	// 选择
+	vector<set<Chromosome*>> paretoPlanes;
+	list<Chromosome*> solutionSet;
+	solutionSet.assign(popPoolNew.begin(), popPoolNew.end());
+	set<Chromosome*> soluSet(popPoolNew.begin(), popPoolNew.end());
+
+	cout << "  soluSet.size())="<< soluSet.size() << endl;
+	//char iu; cin >> iu;
+
+	fastNondominationSort(solutionSet, paretoPlanes);
+
+	cout << "  xkddyddhc=" << numOfPop << endl;
+
+	popPool.clear();
+	
+
+	int index_plane = 1;
+	int curSize = 0;
+	vector<pair<Chromosome*, double>> crowdingDistances;  // 拥挤度
+	for (auto iter = paretoPlanes.begin(); iter != paretoPlanes.end(); ++iter) {
+		crowdingDistances.clear();
+		cout << "    plane " << index_plane++ << endl;
+
+		set<Chromosome*>& curPlane = *iter;
+
+		if (curSize == numOfPop)     // 对于多于的染色体
+		{
+			for (auto curChrom : curPlane)
+				delete curChrom;
+			continue;
+		}
+
+		if (curSize + curPlane.size() <= numOfPop) 
+		{
+			for (auto& chromP : curPlane) popPool.emplace_back(chromP);
+			curSize += curPlane.size();
+		}
+		else
+		{
+			getDensityEstimation(curPlane, crowdingDistances);    // 计算拥挤度
+			for (auto& chromInfo : crowdingDistances) {
+				Chromosome* chromP = chromInfo.first;
+				if (curSize < numOfPop) {  // 放入
+					popPool.emplace_back(chromP);
+					++curSize;
+				}
+				else
+					delete chromP;
+			}
+		}
+	}
+
+	// 为交叉变异分配空的染色体对象
+	for (int i = 0; i < numOfParentsForCroOver; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForCroOver[i] = chromP;
+	}
+	for (int i = 0; i < numOfParentsForMutation; ++i) {
+		Chromosome* chromP = new Chromosome(lenOfGACode, rangeOfJob);
+		childsForMutation[i] = chromP;
+	}
+
+	// 更新种群
+	//popPool = popPoolNew;
+	cout << "kkeiweie" << endl;
+};
+
+
+void GeneticAlgorithm::runNSGA2() {
+	GeneticAlgorithm* gaP = this;
+	int totalGeneration = this->m_totalGeneration;
+	int& curGeneration = this->m_curGeneration;
+
+	cout << "\n\n\n\n\n\n\n" << endl;
+	cout << "CurGeneration=" << curGeneration << endl;
+	clock_t startTime, endTime;
+	startTime = clock();
+	// char a; cin >> a;
+
+	//const unsigned int num_thread = thread::hardware_concurrency();  // 获取硬件所支持的线程个数
+	const int num_thread = 5;  // 这里最高设置为6；设置为5时，CPU最高占用85%
+	vector<threadInfoOfLS*> threadInfos = initThreadsInfoOfLS(num_thread, gaP->m_jobOrderBefP, gaP->m_machsMapBefP);
+
+	for (; curGeneration <= totalGeneration; ++curGeneration) {
+		cout << "CurGeneration=" << curGeneration << endl;
+		//char a; cin >> a;
+		//break;
+
+		//this->localSearch();
+		this->localSearch_Parallel(num_thread, threadInfos);
+
+		cout << " localsearch of generation:" << curGeneration << endl;
+		this->m_coeff_pressure *= this->m_pressureBaseNum;  // 更新轮盘赌选择压力系数
+
+		cout << " m_coeff_pressure=" << m_coeff_pressure << endl;
+
+
+		cout << "  numOfPoppp1=" << this->m_numOfPop << endl;
+
+		this->resetChildChroms();
+		cout << " initializeChildChroms" << endl;
+		this->crossoverOfPop();
+		cout << " crossoverOfPop" << endl;
+		this->mutationOfPop_JobTardiness();  // this->mutationOfPop();  this->mutationOfPop_JobTardiness();
+
+		cout << "  numOfPoppp2=" << this->m_numOfPop << endl;
+
+		cout << " mutationOfPop" << endl;
+		this->getObjValForChilds();
+		cout << " getObjValForChilds" << endl;
+
+		this->selectForNextGeneration_byParetoPlanes();
+
+		cout << " selection_ByTournamentReject" << endl;
+		this->printBestObjVal();
+
+		// if (curGeneration == 40) break;
+	}
+	releaseThreadsInfoOfLS(num_thread, threadInfos);
+
+
+	endTime = clock();
+	double t_sec = (double)(endTime - startTime) / CLOCKS_PER_SEC;
+
+	cout << "The run time is: " << t_sec << "s  " << t_sec / 60 << "min" << endl;
+
+	for (auto& ele : this->m_recordOfBestObjVals) {
+		cout << ele.second << ' ';
+	}
+	cout << endl;
+
+	cout << "why" << endl;
+	for (int i = 0; i < this->m_numOfPop; ++i) {
+		cout << "numOfChrome:" << i << " obj=" << this->m_popPool[i]->objectValues.second << endl;
+		for (int j = 0; j < this->m_popPool[i]->tardinessOfjobs.size(); ++j) {
+			cout << j << ":" << this->m_popPool[i]->tardinessOfjobs[j] << "   ";
+		}
+		cout << endl;
+	}
+
+};
+
+
+
+
+
+
+
 GeneticAlgorithm:: ~GeneticAlgorithm() {
 	for (auto& chromP : this->m_popPool) delete chromP;
 	for (auto& chromP : this->m_childsForCroOver) delete chromP;
@@ -1564,7 +1875,8 @@ GeneticAlgorithm:: ~GeneticAlgorithm() {
 // --------GA获取目标函数值相关--------
 
 // GA解码用，可以获取job的拖期时长————获取目标函数值 <总延期时间(小时), 加工所有工件所需的时间长度(小时)>
-pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP)  // get object value
+//pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, Chromosome* chromP)  // get object value
+pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, Chromosome* chromP)
 {
 	chromP->delayJobs.clear();
 	double totalDueTime(0.0);   // 总延期时间（小时）
@@ -1612,17 +1924,49 @@ pair<double, double> getObjValsForChrom(vector<pair<string, Job*>>& jobOrder, ma
 		//std::cout << "delay time of "<<curJobP->m_jobCode << " is: " << delayTime<<std::endl;
 	}
 
+
+	// 计算总切换时间
+	double totalSwitchT = 0.0;
+	for (auto& machInfo : machsMap) {  // 遍历所有mach
+		string machCode = machInfo.first;
+
+		if (CodeOfBellFurn == machCode)  // 是钟罩炉
+		{
+			Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machInfo.second);
+			;
+		}
+		else {  //其他
+			Mach* curMachP = machInfo.second;
+			double switchT = curMachP->m_timeOfSwith;
+			if (switchT == 0.0 || curMachP->m_allocatedTimeWin.size() == 0) continue;
+
+			list<pair<pair<string, unsigned>, time_period>>::iterator iter = curMachP->m_allocatedTimeWin.begin();
+			list<pair<pair<string, unsigned>, time_period>>::iterator iterNext = iter;
+			++iterNext;
+			for (; iterNext != curMachP->m_allocatedTimeWin.end(); ++iter, ++iterNext) {
+				if (jobsMap[iter->first.first]->m_alloyGrade != jobsMap[iterNext->first.first]->m_alloyGrade)
+					totalSwitchT += switchT;
+			}
+		}
+
+	}
+
+
+
 	//cout<< "timeOfCompletion=" <<to_iso_extended_string(timeOfCompletion)<<endl;
 	//cout<< "timeOfStart=" << to_iso_extended_string(timeOfStart) << endl;
 
-	
+
 	makeSpan = timeDuration2Double(timeOfCompletion - timeOfStart);
 	//std::cout << "totalDueTime=　" << totalDueTime << std::endl;
 	//std::cout << "makeSpan = " << makeSpan << std::endl;
 	//std::cout << std::endl;
 
-	//return make_pair(totalDueTime, makeSpan);
-	return make_pair(makeSpan, totalRuntime);
+	//return make_pair(totalDueTime, makeSpan);  //  原来的
+	//return make_pair(makeSpan, totalRuntime);
+	return make_pair(totalSwitchT, makeSpan);
+
+
 };
 
 // 获取染色体的目标函数值
@@ -1663,7 +2007,8 @@ pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorith
 		}
 		else {  //其他
 			Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-			isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 		}
 		if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 	}
@@ -1690,14 +2035,17 @@ pair<double, double> getObjectValuesOfChromo(Chromosome* chromP, GeneticAlgorith
 			else  //其他
 			{
 				Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-				isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+				//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 			}
 			if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 		}
 	}
 
 	// 获取目标值
-	pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	//pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	pair<double, double> objVals = getObjValsForChrom(jobOrder, jobsMapTemp, machsMapTemp, chromP);
+
 	chromP->objectValues = objVals;
 
 	// 打印最终排程结果
@@ -1762,7 +2110,8 @@ pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, Geneti
 		}
 		else {  //其他
 			Mach* curMachP = machsMapTemp[machCodeOfCurJob.first];
-			isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			//isSuccess = insertJob(*curJobP, *curMachP, machIndex);
+			isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 		}
 		if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 	}
@@ -1798,7 +2147,8 @@ pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, Geneti
 	*/
 
 	// 获取目标值
-	pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	//pair<double, double> objVals = getObjValsForChrom(jobOrder, machsMapTemp, chromP);
+	pair<double, double> objVals = getObjValsForChrom(jobOrder, jobsMapTemp, machsMapTemp, chromP);
 	chromP->objectValues = objVals;
 
 
@@ -1880,7 +2230,7 @@ void initChromCodesByInitSedul(vector<pair<string, Job*>>& jobOrderScheduled, co
 // 由预先代码获取染色体编码
 void initChromCodesByPreCode(const int totalLenOfGACode, Chromosome* chromPInit, Chromosome* chromPInit2)
 {
-	/*
+	
 	// NEH--初始排序-总加工时间；目标-makespan
 	chromPInit->code = { 3, 0, 22, 3, 43, 38, 21, 43, 79, 3, 79, 31, 91, 31, 47, 79, 44, 47, 79, 31, 44, 8, 15, 79, 84, 72, 79, 96, 91, 10, 91
 		, 11, 91, 79, 80, 81, 78, 91, 35, 35, 50, 0, 91, 8, 94, 8, 90, 91, 8, 37, 59, 37, 91, 23, 52, 8, 12, 15, 73, 8, 15, 15, 24, 22, 15, 38
@@ -1924,9 +2274,9 @@ void initChromCodesByPreCode(const int totalLenOfGACode, Chromosome* chromPInit,
 		, 92, 92, 92, 92, 92, 92, 92, 34, 34, 34, 34, 34, 34, 34, 41, 41, 41, 41, 41, 41, 95, 95, 95, 95, 36, 36, 36
 		, 36, 36, 36, 36, 46, 46, 46, 46, 46, 46, 46, 7, 7, 7, 7, 7, 7, 45, 45, 45, 45, 45, 45, 45, 18, 18, 18, 18
 		, 18, 18, 18, 76, 76, 76, 76, 76, 76, 76, 42, 42, 42, 42, 42, 42, 42, 77, 77, 77, 77, 77, 77, 77 };
-	*/
+	
 
-
+	/*
 	// NEH--初始排序-总加工时间；目标-总流水时间
 	chromPInit->code = { 4, 0, 22, 4, 31, 38, 21, 39, 4, 31, 59, 39, 17, 17, 10, 59, 31, 16, 10, 16, 11, 80, 11, 81, 80, 39, 25, 81, 25, 99
 		, 59, 3, 99, 3, 85, 24, 85, 91, 10, 10, 11, 40, 80, 81, 80, 5, 40, 3, 10, 11, 26, 81, 80, 6, 10, 11, 85, 90, 24, 85, 81, 78, 91, 24
@@ -1972,8 +2322,10 @@ void initChromCodesByPreCode(const int totalLenOfGACode, Chromosome* chromPInit,
 		, 37, 37, 44, 44, 44, 44, 44, 44, 44, 34, 34, 34, 34, 34, 34, 34, 36, 36, 36, 36, 36, 36, 36, 2, 2, 2, 2, 19, 19
 		, 19, 19, 19, 19, 19, 45, 45, 45, 45, 45, 45, 45, 95, 95, 95, 95, 20, 20, 20, 20, 20, 20, 20, 47, 47, 47, 47, 47
 		, 47, 47, 18, 18, 18, 18, 18, 18, 18, 41, 41, 41, 41, 41, 41, 43, 43, 43, 43, 43, 43, 43, 46, 46, 46, 46, 46, 46, 46 };
+	*/
 
 
+	/*
 	// NEH做初始解（初始排序-总加工时间；目标-makespan），GA得到的最优解
 	chromPInit->code = { 3, 3, 3, 43, 43, 43, 43, 43, 43, 43, 79, 79, 7, 79, 79, 79, 79, 31, 31, 31, 91, 91, 91, 91, 91, 44, 47, 47, 47
 		, 1, 47, 47, 47, 15, 15, 15, 15, 8, 70, 8, 8, 8, 8, 9, 44, 44, 44, 44, 44, 91, 91, 91, 15, 15, 84, 84, 84, 84, 84, 84, 72, 77
@@ -1999,6 +2351,7 @@ void initChromCodesByPreCode(const int totalLenOfGACode, Chromosome* chromPInit,
 		, 95, 36, 36, 36, 36, 36, 36, 36, 46, 46, 46, 46, 46, 46, 46, 7, 7, 7, 7, 7, 79, 45, 45, 45
 		, 85, 85, 85, 85, 45, 45, 45, 45, 18, 18, 18, 18, 18, 18, 71, 18, 76, 76, 76, 76, 76, 76
 		, 71, 76, 42, 42, 42, 71, 42, 42, 42, 42, 77, 77, 77, 77, 77, 77 };
+	*/
 
 
 	/*
