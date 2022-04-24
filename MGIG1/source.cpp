@@ -109,24 +109,28 @@ map<string, string> mapMachCodeToName{
 
 
 map<string, double> machsCapMap{
-	make_pair("BD-S003", 100)
-	, make_pair("BD-S005", 100)
-	, make_pair("BD-S025", 100)
-	, make_pair("BD-S009", 100)
-	, make_pair("BD-S010", 100)
-	, make_pair("BD-S011", 100)  // 轧机
-	, make_pair("BD-S024", 100)
-	, make_pair("BD-S007", 300)
-	, make_pair("BD-S008", 300)
-	, make_pair("BD-S006", 300)
-	, make_pair("BD-S006", 300)  // 气垫炉
-	, make_pair("BD-S018", 300)
-	, make_pair("BD-S016",  300)
-	, make_pair("BD-S019", 400)
-	, make_pair("BD-S020", 400)
-	, make_pair("BD-S021", 400)  // 剪切
-	, make_pair("BD-S015", 400)  // 拉弯矫                                                                    
-	, make_pair("BD-S013", 400)  // 清洗
+	make_pair("BD-S003", 20000)   // 轧机
+	, make_pair("BD-S005", 12000)
+	, make_pair("BD-S025", 10526)
+	, make_pair("BD-S009", 10526)
+	, make_pair("BD-S010", 6667)
+	, make_pair("BD-S011", 6741)  // 轧机--结束
+	, make_pair("BD-S024", 6000)    // 气垫式退火炉
+	, make_pair("BD-S007", 10526)
+	, make_pair("BD-S008", 6780)    // 气垫式退火炉--结束
+	, make_pair("BD-S006", 5405)  // 钟罩式退火炉
+	, make_pair("BD-S018", 15000)  // 横纵剪
+	, make_pair("BD-S016", 15000)
+	, make_pair("BD-S019", 4500)
+	, make_pair("BD-S020", 15000)
+	, make_pair("BD-S021", 7500)  // 横纵剪--结束
+	, make_pair("BD-S015", 6000)  // 拉弯矫                                                                    
+	, make_pair("BD-S013", 6780)  // 清洗
+
+	, make_pair("BD-S002", 20000)
+	, make_pair("BD-S012", 20000)
+	, make_pair("BD-S004", 24000)
+	, make_pair("BD-S024", 6000)
 };
 
 
@@ -165,7 +169,17 @@ string getTypeFromGrade(const string& alloyGrade)
 
 // 获取工单当前的宽度、厚度，长度，重量，内径
 
-double getCurWidth(Job* jobP, int machIndexOfJob)
+double getCurWidth(Job* jobP, int machIndexOfJob)  // 简化版
+{
+	return jobP->m_initialInfos.m_targetWidth;
+};
+
+double getCurWidth(Job* jobP, string machCode, int reentry)  // 简化版
+{
+	return jobP->m_initialInfos.m_targetWidth;
+};
+
+double getCurWidth2(Job* jobP, int machIndexOfJob)  // 原版
 {
 	double curWidth(0); //job的当前宽度
 	for (int i = machIndexOfJob; i >= 0; --i)
@@ -181,7 +195,7 @@ double getCurWidth(Job* jobP, int machIndexOfJob)
 	return curWidth;
 };
 
-double getCurWidth(Job* jobP, string machCode, int reentry)
+double getCurWidth2(Job* jobP, string machCode, int reentry)  // 原版
 {
 	int machIndexOfJob = -1;
 	for (int i = 0; i < jobP->m_proceMachs.size(); ++i) {
@@ -205,6 +219,7 @@ double getCurWidth(Job* jobP, string machCode, int reentry)
 		curWidth = jobP->m_initialInfos.m_targetWidth;
 	return curWidth;
 };
+
 
 double getCurThick(Job* jobP, int machIndexOfJob)
 {
@@ -276,7 +291,7 @@ double getCurInnerDia(Job* jobP, int machIndexOfJob)
 // --------MySQL数据库交互--------
 
 // 从数据库读入数据初始化Jobs和Machs的信息
-void initialByDatabase(MYSQL* mysql, vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap) {
+void initialByDatabase(MYSQL* mysql, vector<string>& jobsCodeVec, vector<string>& machsCodeVec, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) {
 	MYSQL_RES* res(NULL);   //这个结构代表返回行的一个查询结果集  
 	ConnectDatabase(mysql);
 
@@ -295,6 +310,30 @@ void initialByDatabase(MYSQL* mysql, vector<string> jobsCodeVec, vector<string> 
 	sqla = "select * from tlprocess"; //,  by tape_lable, order_id order_id
 	res = QueryDatabase1(mysql, sqla);
 	initializeJobs2(res, jobsCodeVec, jobsMap);
+
+	// 初始化job的交期时间和开始日期
+	for (auto& jobInfo : jobsMap)  // 遍历所有job
+	{
+		Job* curJobP = jobInfo.second;
+		curJobP->m_dueDateOfOrder = from_iso_string((curJobP->m_dueDateOfOrderStr) + "T115959");  // 初始化job的交期时间
+		// 检查job的日期格式！！？？!!??
+		curJobP->m_startDateOfOrder = getCurTime();
+	}
+	
+
+	std::default_random_engine randm(27);
+	int numOfJob = 100;
+	std::uniform_int_distribution<int> dis_weight(4000, 20000);  // 订单的重量
+	vector<double> widths{ 650, 850 };   // job的宽度规格
+	// 计算工序的时间，计算交期时间
+	for (auto& ele : jobsMap)
+	{
+		Job* jobP = ele.second;
+		cout << "job: " << jobP->m_jobCode << endl;
+		jobP->m_initialInfos.m_targetWeight = dis_weight(randm);    // 重量650,850
+		jobP->m_initialInfos.m_targetWidth = widths[rand() % widths.size()];
+	}
+
 };
 
 // 初始化设置，连接mysql数据库
@@ -541,7 +580,10 @@ time_duration getProcessTime(Mach* machP, Job* jobP, unsigned machIndex)
 		char c;
 		cin >> c;
 	}
-	processT = cap / weigt;
+	processT = weigt/cap;
+	if (machP->m_machCode == CodeOfBellFurn)
+		processT = 30.0;
+	cout << " weigt=" << weigt << "  cap=" << cap << endl;
 
 	if (0.0 == processT)
 	{
@@ -944,6 +986,8 @@ bool  insertJob(Job& curJob, Mach_AirFurnace& curMach, unsigned machIndexOfJob, 
 bool  insertJob(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob, map<string, Job*> &jobsMap)
 {
 	time_duration& processTime = curJob.m_proceTimes[machIndexOfJob].second;
+
+
 	pair<pair<int, int>, time_period> newFurnRes = (make_pair(pair<unsigned, unsigned>(make_pair(-1, -1))
 		, time_period(curJob.m_startDateOfOrder, processTime))); // 记录新开一炉的情况; pair<pair< 第几个timeline, 插入位置>, 时间窗>
 	pair<pair<int, int>, time_period> notNewFurnRes = (make_pair(pair<unsigned, unsigned>(make_pair(-1, -1))
@@ -953,9 +997,11 @@ bool  insertJob(Job& curJob, Mach_BellFurnace& curMach, unsigned machIndexOfJob,
 	pair<int, bool> resultOfPreInsert(make_pair(-1, false));   // pair<TimeWin的位置, 是否要新开一炉>
 	for (auto& timeline : curMach.m_timeLines)
 	{
+		//cout << "  Index_parallelMach=" << Index_parallelMach <<"  processTime=" <<to_iso_string(processTime)<< endl;
 		time_period timeWinResult(curJob.m_startDateOfOrder, processTime);
 
 		resultOfPreInsert = preInsertJobToMach(curJob, curMach, machIndexOfJob, timeline, timeWinResult, jobsMap);
+		//cout << "  endddddddddddd" << endl;
 
 		if (resultOfPreInsert.second) // 是新开1炉
 		{
@@ -1396,25 +1442,26 @@ pair<unsigned, bool> preInsertJobToMach(Job& curJob, Mach_BellFurnace& curMach, 
 	else
 	{
 		// 遍历timeline
-		for (auto timeInfo_iter = timeline.begin();
-			timeInfo_iter != timeline.end(); ++timeInfo_iter, ++IndexOfTimeWin)
+		for (auto timeInfo_iter = timeline.begin(); timeInfo_iter != timeline.end(); ++timeInfo_iter, ++IndexOfTimeWin)
 		{
 			ptime left_TimeWin = timeInfo_iter->second.begin();
 			ptime right_TimeWin = timeInfo_iter->second.last();
 			//cout << "    " <<to_iso_extended_string(left_TimeWin)<<"  IndexOfTimeWin="<< IndexOfTimeWin << endl;
 
+			//cout << "hhhhhhhhh" << endl;
 			if (left_TimeWin < readyTimeForOrder + processTime)  // 可加工时间和时间窗开始时间之间一定放不下新的一炉
 			{
 				if ((readyTimeForOrder < left_TimeWin) && canAddToTimeWin(&curJob, machIndexOfJob, *timeInfo_iter, jobsMap))
 				{
 					timeWinResult = timeInfo_iter->second;
 					flag_NewFurn = false; // 不新开一炉
-					isInserted = true;  // 插入已有炉中
+					isInserted = true;    // 插入已有炉中
 					break;
 				}
 				continue;
 			}
 
+			//cout << "xxxxxxxxxxxxx" << endl;
 			if (timeline.cbegin() != timeInfo_iter)  // 不是第一个time window
 			{
 				auto timeInfo_iter2 = timeInfo_iter;
@@ -1428,16 +1475,16 @@ pair<unsigned, bool> preInsertJobToMach(Job& curJob, Mach_BellFurnace& curMach, 
 					isInserted = true;
 					break;
 				}
-
 			}
 		}  // END OF 遍历timeline
+
+		//cout << "  isInserted=" << isInserted << endl;
 
 		if (!isInserted)
 		{
 			IndexOfTimeWin = 0;
 			// 遍历timeline
-			for (list<TimeWin>::iterator timeInfo_iter = timeline.begin();
-				timeInfo_iter != timeline.end(); ++timeInfo_iter, ++IndexOfTimeWin)
+			for (list<TimeWin>::iterator timeInfo_iter = timeline.begin(); timeInfo_iter != timeline.end(); ++timeInfo_iter, ++IndexOfTimeWin)
 			{
 				ptime left_TimeWin = timeInfo_iter->second.begin();
 				ptime right_TimeWin = timeInfo_iter->second.last();
@@ -1892,7 +1939,6 @@ void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) 
 	{
 		string curjobcode = jobInfo.first;
 		Job* curJobP = jobInfo.second;
-		curJobP->m_dueDateOfOrder = from_iso_string((curJobP->m_dueDateOfOrderStr) + "T115959");
 		if (true)
 		{
 			std::cout << curjobcode << ": " << curJobP->m_dueDateOfOrderStr
@@ -1901,11 +1947,7 @@ void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) 
 		}
 
 		if (processLineSet.find(curJobP->m_proceMachs) != processLineSet.end())
-		{
 			processLineSet.insert(curJobP->m_proceMachs);
-		}
-		// 检查job的日期格式！！？？!!??
-		curJobP->m_startDateOfOrder = getCurTime();
 	}
 
 	cout << "ordernum=" << jobsMap.size() << endl; // order个数
@@ -1913,16 +1955,21 @@ void printProcessLine(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) 
 
 // 获取job各个工序处理时间，并初始化不同的job vector，每个工序的处理时间，总加工时间，松弛时间，截止时间
 void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, vector<pair<Job*, ptime>>& jobsWithDueDate
-	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime) {
-
+	, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime) 
+{
+	int i = 0;
 	for (auto& jobInfo : jobsMap)  // 遍历所有job，processTime，获取processTime
 	{
+		cout << "  i="<<i++ <<" jobCode=" << jobInfo.first << endl;
 		string curJobCode = jobInfo.first;
 
+		cout << "  pppppppp" << endl;
 		Job* curJobP = jobInfo.second;
 		jobsWithDueDate.emplace_back(make_pair(curJobP, curJobP->m_dueDateOfOrder));
-		time_duration sumOfProcessTime;
+		time_duration sumOfProcessTime=double2timeDuration(0.0);
 		unsigned machIndex(0);
+
+		cout << "  vvvvvvvvv" << endl;
 		if (curJobP->m_dueDateOfOrder <= getCurTime() && 0)
 		{
 			cout << "job '" << curJobP->m_jobCode
@@ -1930,26 +1977,31 @@ void initialJobVecs(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, ve
 			continue;
 		}
 
+		cout << "  xxxxxxxxxx" << endl;
+		cout << "  curJobP->m_proceMachs.size()="<< curJobP->m_proceMachs.size() << endl;
 		for (pair<string, unsigned>& machInfoOfCurJob : curJobP->m_proceMachs)   // 遍历某个job的所有machine
 		{
 			//std::cout << "machIndex=" << machIndex 
 			//std::cout<< curJobP->m_proceTargets.size() << std::endl;
-			ProcessTargets const& processTargets = (curJobP->m_proceTargets)[machIndex].second;
+
+			cout << "machsMap[machInfoOfCurJob.first=" << machInfoOfCurJob.first << endl;
 			time_duration processTime = getProcessTime(machsMap[machInfoOfCurJob.first], curJobP, machIndex);
+			cout<< "machsMap[machInfoOfCurJob.first=" << machInfoOfCurJob.first << endl;
 			//time_duration processTime = curJobP->m_proceTimes[machIndex].second;
-			std::cout << "2processtT=" << to_iso_string(processTime) << std::endl;
+			std::cout << "    2processtT=" << to_iso_string(processTime) << std::endl;
+			std::cout << "    curJobP->m_proceTimes.size()=" << curJobP->m_proceTimes.size() << std::endl;
 			if (curJobP->m_proceTimes.size() > machIndex)
-				curJobP->m_proceTimes[machIndex] = make_pair((curJobP->m_proceTargets)[machIndex].first, processTime);
+				curJobP->m_proceTimes[machIndex] = make_pair(curJobP->m_proceMachs[machIndex], processTime);
 			else
 				curJobP->m_proceTimes.insert(curJobP->m_proceTimes.begin() + machIndex,
-					make_pair(curJobP->m_proceTargets[machIndex].first, processTime));
+					make_pair(curJobP->m_proceMachs[machIndex], processTime));
 
 			sumOfProcessTime = sumOfProcessTime + processTime;
 			++machIndex;
 		}
+		std::cout << "  sumOfProcessTime=" << to_iso_string(sumOfProcessTime) << std::endl;
 
 		curJobP->m_totalProceTime = sumOfProcessTime;
-		std::cout << "sumOfProcessTime = " << to_iso_string(sumOfProcessTime) << std::endl;
 		time_duration slackTime = (curJobP->m_dueDateOfOrder - getCurTime()) - sumOfProcessTime;  //job的剩余时间（当前时点距离交货期的时间）与该job所需的加工时间之差
 		jobsWithSlackTime.emplace_back(make_pair(curJobP, slackTime));
 		jobsWithTotalProTime.emplace_back(make_pair(curJobP, sumOfProcessTime));
@@ -1993,6 +2045,7 @@ void initialJobsBatch(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, 
 		++i;
 	}
 
+	i = 0;
 	for (auto& jobInfo : jobsCodeVec)  // 遍历所有job，获取有多个钟罩炉的job
 	{
 		Job* jobP = jobsMap[jobInfo];
@@ -2335,6 +2388,32 @@ pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<str
 		//std::cout << "delay time of "<<curJobP->m_jobCode << " is: " << delayTime<<std::endl;
 	}
 
+	// 计算总切换时间
+	double totalSwitchT = 0.0;
+	for (auto& machInfo : machsMap) {  // 遍历所有mach
+		string machCode = machInfo.first;
+
+		if (CodeOfBellFurn == machCode)  // 是钟罩炉
+		{
+			Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machInfo.second);
+			;
+		}
+		else {  //其他
+			Mach* curMachP = machInfo.second;
+			double switchT = curMachP->m_timeOfSwith;
+			if (switchT == 0.0 || curMachP->m_allocatedTimeWin.size() == 0) continue;
+
+			list<pair<pair<string, unsigned>, time_period>>::iterator iter = curMachP->m_allocatedTimeWin.begin();
+			list<pair<pair<string, unsigned>, time_period>>::iterator iterNext = iter;
+			++iterNext;
+			for (; iterNext != curMachP->m_allocatedTimeWin.end(); ++iter, ++iterNext) {
+				if (jobsMap[iter->first.first]->m_alloyGrade != jobsMap[iterNext->first.first]->m_alloyGrade)
+					totalSwitchT += switchT;
+			}
+		}
+
+	}
+
 	//cout<< "timeOfCompletion=" <<to_iso_extended_string(timeOfCompletion)<<endl;
 	//cout<< "timeOfStart=" << to_iso_extended_string(timeOfStart) << endl;
 
@@ -2343,9 +2422,12 @@ pair<double, double> getObjValsWithTardiness(map<string, Job*>& jobsMap, map<str
 	//std::cout << "makeSpan = " << makeSpan << std::endl;
 	//std::cout << std::endl;
 
+	std::cout << "      makeSpan = " << makeSpan << "  totalDueTime = " << totalDueTime
+		<< "  totalSwitchT = " << totalSwitchT << std::endl;
+
 	//return make_pair(totalDueTime, makeSpan);
 	//return make_pair(totalRuntime, makeSpan);
-	return make_pair(makeSpan, totalRuntime);
+	return make_pair(totalSwitchT, makeSpan);
 };
 
 // --------END OF--获取目标函数值相关--------
@@ -2364,21 +2446,25 @@ void rule_Method(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL
 
 	vector<pair<string, Job*>> jobOrder;
 
+	//for (int i = jobsWithDueDate.size() - 1; i >= 0; --i)
+
 	//for (int i = jobsWithTotalProTime.size() -1; i >= 0; --i) 
-	for (int i = 0; i < jobsWithSlackTime.size(); ++i)
-	//for (int i = jobsWithDueDate.size()-1; i >= 0; --i)
-	//for (int i = 0; i < jobsWithTotalProTime.size(); ++i)
+	//for (int i = 0; i < jobsWithSlackTime.size(); ++i)
+	//for (int i =0; i < jobsWithDueDate.size(); ++i)
+	for (int i = 0; i < jobsWithTotalProTime.size(); ++i)
 	{
-		//Job* curJobP = jobsWithTotalProTime[i].first;
-		Job* curJobP = jobsWithSlackTime[i].first;
+		Job* curJobP = jobsWithTotalProTime[i].first;
+		//Job* curJobP = jobsWithSlackTime[i].first;
 		//Job* curJobP = jobsWithDueDate[i].first;
 		//if(curJobP->)
 		jobOrder.push_back(make_pair(curJobP->m_jobCode, curJobP));
 	}
 
+	cout << "  startSheduling..." << endl;
 	pair<double, double> objectVals = scheduleByJobOrder(jobOrder, jobsMap, machsMap, mysql, false);
 
-	cout << "objectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
+	//cout << "objectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
+	cout << "totalSwitchT=" << objectVals.first << ";  makeSpan=" << objectVals.second << endl;
 }
 
 // NEH方法核心运算，jobOrder需要是空的，job的信息都需存在jobsMap中！
@@ -2407,7 +2493,7 @@ void NEH_MethodCore(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& job
 		//}
 
 		//Job* jobP_chosen = jobsWithSlackTime[i].first;
-		Job* jobP_chosen = jobsWithTotalProTime[i].first;
+		Job * jobP_chosen = jobsWithTotalProTime[i].first;
 		Job* curJobP = jobsMap[jobP_chosen->m_jobCode];
 
 		cout << "    i=" << i << "  curJobP->m_jobCode=" << curJobP->m_jobCode << endl;
@@ -2421,7 +2507,7 @@ void NEH_MethodCore(vector<pair<string, Job*>>& jobOrder, map<string, Job*>& job
 
 			if (0 == j_insertPosition) 
 				bestObjectVals = objectVals;
-			// else if (objectVals.first < bestObjectVals.first)
+			//else if (objectVals.first < bestObjectVals.first)
 			else if ((objectVals.second) < (bestObjectVals.second))
 			{
 				bestPosition = j_insertPosition;
@@ -2495,7 +2581,9 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	int totalLenOfChromCode = getCodeInfoOfGA_All(jobOrderBef, encodeInfoOfGA);  // GA编码的长度
 
 
-	/*
+	
+
+
 	// 使用NEH方法，来获取初始排序job Order
 	jobOrderInit.clear();
 	NEH_MethodCore(jobOrderInit, jobsMapInit, machsMapInit, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
@@ -2504,6 +2592,9 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	cout << "初始排序 jobOrderInit.size()=" << jobOrderInit.size() << endl;
 	cout << "         bestObjectVals(makespan)=" << objectVals.second << ";  due time=" << objectVals.first << endl;
 
+
+
+	/*
 	// 从初始排序结果得到染色体
 	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
 	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
@@ -2511,24 +2602,54 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	*/
 
 
+
+	vector<pair<string, Job*>> jobOrderInit2;
+	jobOrderInit2.reserve(jobOrder.size());
+	map<string, Job*> jobsMapInit2;
+	map<string, Mach*> machsMapInit2;
+	iniByJobsWithDueDate(jobsWithDueDate, jobOrderInit2, jobsMapInit2, machsMap, machsMapInit2);
+	pair<double, double> objectVals2 = scheduleByJobOrder(jobOrderInit2, jobsMapInit2, machsMapInit2, mysql, false);  // 获取初始排序，来获取初始排序结果
+
+	cout << "初始排序 jobOrderInit2.size()=" << jobOrderInit2.size() << endl;
+	cout << "         bestObjectVals2(makespan)=" << objectVals2.second << ";  due time=" << objectVals2.first << endl;
+
+	// 从初始排序结果得到染色体
+	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+	Chromosome* chromPInit3 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
+	Chromosome* chromPInit4 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
+	initChromCodesByInitSedul2(jobOrderInit, jobOrderInit2, encodeInfoOfGA, totalLenOfChromCode, chromPInit, chromPInit2, chromPInit3, chromPInit4);   // 由初始排产结果获取染色体的编码
+
+
+
+
+
+
+	/*
 	// 由initChromCodesByPreCode中预先设定的代码得到染色体
 	Chromosome* chromPInit = new Chromosome(totalLenOfChromCode, jobOrderInit.size());   // 染色体
 	Chromosome* chromPInit2 = new Chromosome(totalLenOfChromCode, jobOrderInit.size());  // 染色体
 	initChromCodesByPreCode(totalLenOfChromCode, chromPInit, chromPInit2);   // 由初始排产结果获取染色体的编码
-	
+	*/
+
+
 
 
 	// GA的初始化
 	GeneticAlgorithm* gaP = new GeneticAlgorithm(jobOrder.size(), 150, 200, totalLenOfChromCode);
-	gaP->initializePopulation(chromPInit, chromPInit2);                     // 初始化种群（染色体集合）
-	gaP->initializeInfoOfBef(&jobOrderBef, &jobsMapBef, &machsMapBef);      // 初始化GA中用于对染色体解码（排产）信息
+	// gaP->initializePopulation(chromPInit, chromPInit2);                            // 初始化种群（染色体集合）
+	gaP->initializePopulation2(chromPInit, chromPInit2, chromPInit3, chromPInit4);  // 初始化种群（染色体集合）
+	gaP->initializeInfoOfBef(&jobOrderBef, &jobsMapBef, &machsMapBef);              // 初始化GA中用于对染色体解码（排产）信息
 
 	//用于测试
-	getObjValsOfInitialChroms(chromPInit, chromPInit2, gaP);
+	//getObjValsOfInitialChroms(chromPInit, chromPInit2, gaP);
+	//getObjValsOfInitialChroms(chromPInit3, chromPInit4, gaP);
+	//char cr; cin >> cr;
+
 
 	gaP->initObjValsOfGAPop();                                              // 初始化种群中的每个染色体的目标函数
-	//gaP->runGA();                                                          	// 运行
-	gaP->runNSGA2();                                                          	// 运行
+	gaP->runGA();                                                          	// 运行
+	//gaP->runNSGA2();                                                          	// 运行
 
 
 
@@ -2536,6 +2657,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	//mutationOfPop(0.23, gaP->numOfPop, gaP->totalLenOfChromCode, chromPInit, popPool);
 
 
+	/*
 	for (int j = 0; j < gaP->m_popPool[10]->tardinessOfjobs.size(); ++j) {
 		cout << j << ":" << gaP->m_popPool[10]->tardinessOfjobs[j] << "   ";
 	}
@@ -2565,6 +2687,7 @@ void GA_Method(map<string, Mach*>& machsMap, MYSQL* mysql,
 	for (int j = 0; j < gaP->m_popPool[10]->code.size(); ++j) {
 		cout << gaP->m_popPool[10]->code[j] << " ";
 	}
+	*/
 
 
 	for (auto& jobInfo : jobsMapInit) delete jobInfo.second;
@@ -2873,6 +2996,26 @@ pair<double, double> scheduleForGAByNEH(vector<pair<string, Job*>>& jobOrder, ma
 
 	return objectVals;
 };
+
+
+// 用交期时间来初始化jobOrderInit2
+void iniByJobsWithDueDate(vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<string, Job*>>& jobOrderInit2, map<string, Job*>& jobsMapInit2
+	, map<string, Mach*>& machsMap, map<string, Mach*>& machsMapInit2) 
+{
+	for (int i = 0; i < jobsWithDueDate.size(); ++i) {
+		Job* jobP = new Job;
+		Job* jobPOrign = jobsWithDueDate[i].first;
+		*jobP = *jobPOrign;
+		//cout << "  jobP->m_proceMachs.size()=" << jobP->m_proceMachs.size() << endl;
+		jobOrderInit2.emplace_back(make_pair(jobP->m_jobCode, jobP));
+		jobsMapInit2.emplace(make_pair(jobP->m_jobCode, jobP));
+		jobP->m_allocatedTimeWin.reserve(jobP->m_proceMachs.size());  // 预留job的工序分配空间
+	}
+	initMachsMapTemp(machsMapInit2, machsMap);
+
+	return;
+}
+
 
 
 // 排入气垫炉之前的工序，气垫炉中间的工序不排；最后一个工序是纵横剪的，则最后一个工序不排
@@ -3395,18 +3538,28 @@ void writeToCSV(map<string, Job*>& jobsMap, map<string, Mach*>& machsMap, MYSQL*
 pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
 	map<string, Job*>& jobsMapTemp, map<string, Mach*>& machsMapTemp,  MYSQL* mysql, bool isPrint) 
 {
+
+	int i = 0;
 	Job* curJobP;
 	for (auto& jobInfo : jobOrder)
 	{
+		//cout << "  i=" << i++ <<"  jobCode=" << jobInfo.second->m_jobCode<< endl;
 		curJobP = jobInfo.second;
 		unsigned machIndex(0);  // job的 machine
+
+		//cout << "  ui=" << curJobP<< "  curJobP->jobcode=" << curJobP->m_jobCode << endl;
+		//cout<<"  curJobP->m_proceMachs.size()="<< curJobP->m_proceMachs.size() << endl;
+
 		for (pair<string, unsigned>& machCodeOfCurJob : curJobP->m_proceMachs)   // 遍历某个job的所有machine
 		{
+			//cout << "    machIndex=" << machIndex << "  machCodeOfCurJob=" << machCodeOfCurJob.first << endl;
 			bool isSuccess;
 			if (CodeOfBellFurn == machCodeOfCurJob.first)  // 是钟罩炉
 			{
 				Mach_BellFurnace* curMachP = static_cast<Mach_BellFurnace*>(machsMapTemp[machCodeOfCurJob.first]);
+				//cout << "    curMachP=" << curMachP->m_machCode << endl;
 				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
+
 			}
 			else if (airFurnaceSet.find(machCodeOfCurJob.first) != airFurnaceSet.end()) // 是气垫炉组中的机器
 			{
@@ -3419,9 +3572,10 @@ pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
 				//isSuccess = insertJob(*curJobP, *curMachP, machIndex); 
 				isSuccess = insertJob(*curJobP, *curMachP, machIndex, jobsMapTemp);
 			}
+
 			//if ("0118741020-0-0"==curJobP->m_jobCode)
-			//std::cout << "curJobP.code"<< curJobP->m_jobCode <<"curMach: " << machCodeOfCurJob.first
-			//	<< "isSuccess: " << isSuccess << std::endl;
+			//std::cout << "    curJobP.code"<< curJobP->m_jobCode <<"  curMach: " << machCodeOfCurJob.first
+			//	<< "  isSuccess: " << isSuccess << std::endl;
 			//if (jobOrder.size() >= 80 && ("0118741020-0-0" == curJobP->m_jobCode)) std::cout << "curMach: " << machCodeOfCurJob.first << "qyqyqyqyqyqyqy " << machIndex << endl;
 			if (isSuccess) curJobP->m_curMachIndex = machIndex + 1;
 			++machIndex;
@@ -3433,7 +3587,7 @@ pair<double, double> scheduleByJobOrder(vector<pair<string, Job*>>& jobOrder,
 	// 打印最终排程结果
 	if (isPrint) printFinalRes(jobsMapTemp, machsMapTemp);
 	// 输出到CSV文件
-	if (isPrint) writeToCSV(jobsMapTemp, machsMapTemp);
+	if (false) writeToCSV(jobsMapTemp, machsMapTemp);
 
 	//if (isPrint) writeToCSV(jobsMapTemp, machsMapTemp, mysql);
 	//if (jobOrder.size() >= 80) std::cout << "mmmmmmmmmmmmmm" << endl;
@@ -4523,8 +4677,14 @@ void releaseThreadsInfoOfLS(const int num_thread, vector<threadInfoOfLS*>& threa
 
 // --------案例生成--------
 
-void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap) {
-	std::default_random_engine randm(7);
+void initJobsInfo(vector<string>& jobsCodeVec, vector<string>& machsCodeVec, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap) {
+	
+	std::default_random_engine randm(7);  // 1
+	//std::default_random_engine randm(27);  // 2
+
+	int numOfJob = 40;
+
+
 	std::uniform_int_distribution<int> dis_operation(5, 13);     // 订单的工序的个数
 	std::uniform_int_distribution<int> dis_weight(4000, 20000);  // 订单的重量
 	std::uniform_real_distribution<double> dis2(0.0, 1.0);       // 
@@ -4532,7 +4692,7 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 
 	ptime curTime = getCurTime();
 
-	vector<double> widths{650, 850};
+	vector<double> widths{650, 850};   // job的宽度规格
 	vector<string> alloyGrades(alloyGradeSet.begin(), alloyGradeSet.end());
 	list<string> processLines;
 
@@ -4540,7 +4700,7 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 		cout << ele<< " " << endl;
 	cout << endl;
 
-	int numOfJob = 40;
+
 	for (int i = 1; i <= numOfJob; ++i)
 	{
 		cout << "i=" << i << endl;
@@ -4550,7 +4710,7 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 			processLines.emplace_back(ele);
 		}
 		processLines.emplace_back("BD-S006"); 
-		processLines.emplace_back("BD-S006");
+		//processLines.emplace_back("BD-S006");
 		auto iterBegin = processLines.begin();
 		auto iter = processLines.begin();
 
@@ -4582,9 +4742,9 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 		}
 
 		int index = rand() % alloyGrades.size();  // alloyGradeSet
-		jobP->m_alloyGrade = alloyGrades[index];
-		jobP->m_alloyType = getTypeFromGrade(jobP->m_alloyGrade);
-		jobP->m_initialInfos.m_targetWeight = dis_weight(randm);  // 650,850
+		jobP->m_alloyGrade = alloyGrades[index];                    // 合金牌号
+		jobP->m_alloyType = getTypeFromGrade(jobP->m_alloyGrade);   // 合金种类
+		jobP->m_initialInfos.m_targetWeight = dis_weight(randm);    // 重量650,850
 		jobP->m_initialInfos.m_targetWidth = widths[rand() % widths.size()];
 
 		jobP->m_initialInfos.m_targetThick = 0.0;
@@ -4594,8 +4754,7 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 		jobsCodeVec.push_back(jobP->m_jobCode);
 		jobsMap[jobP->m_jobCode] = jobP;
 	}
-	char ch;
-	cin >> ch;
+	//char ch; cin >> ch;
 
 	for (string machCode:machsSubSet) 
 	{
@@ -4630,17 +4789,22 @@ void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<s
 	for (auto& ele: jobsMap) 
 	{
 		Job* jobP = ele.second;
+
 		cout << "job: " << jobP->m_jobCode << endl;
-		time_duration sumOfProcessT = double2timeDuration(0.0);;
+		time_duration sumOfProcessT = double2timeDuration(0.0);
 		for (int i = 0; i < jobP->m_proceMachs.size(); ++i) {
 			Mach* machP = machsMap[jobP->m_proceMachs[i].first];
 			time_duration processT = getProcessTime(machP, jobP, i);
 			sumOfProcessT += processT;
+			jobP->m_proceTimes.push_back(make_pair(jobP->m_proceMachs[i], processT));
 			cout<<"  machCode= "<< machP->m_machCode << "  processT= " << processT << "  " << timeDuration2Double(processT) << endl;
 		}
-		sumOfProcessT = double2timeDuration(timeDuration2Double(sumOfProcessT) * 3 / 2);
+		//sumOfProcessT = double2timeDuration(timeDuration2Double(sumOfProcessT) * 3 / 2);
 
-		jobP->m_dueDateOfOrder = curTime + sumOfProcessT;
+		jobP->m_startDateOfOrder = curTime;  // 订单到达时间
+
+		std::uniform_real_distribution<double> dis_dueTime(3/2*timeDuration2Double(sumOfProcessT), 2*timeDuration2Double(sumOfProcessT));   // 订单的交期
+		jobP->m_dueDateOfOrder = jobP->m_startDateOfOrder + double2timeDuration(dis_dueTime(randm));
 		jobP->m_dueDateOfOrderStr = to_iso_extended_string(jobP->m_dueDateOfOrder);
 
 		cout<< "job: "<< jobP->m_jobCode << " jobDueDate= " << jobP->m_dueDateOfOrderStr <<"  " << timeDuration2Double(sumOfProcessT) << endl;
@@ -4722,7 +4886,7 @@ void main()
 	//ptime curTime = from_iso_string("20200501T0000000");
 	//ptime curTime = from_iso_string("20220101T0000000");
 
-	MYSQL* mysql;
+	MYSQL* mysql = new MYSQL;
 	if(true)
 		initJobsInfo(jobsCodeVec, machsCodeVec, jobsMap, machsMap);              // 生成案例
 	else 
@@ -4735,7 +4899,6 @@ void main()
 	// 打印jobCodeVec
 	map<string, vector<Job*>> jobsWithBell;  // map< 牌号, vector<Job*> >
 	map<string, pair<Job*, int>> jobsWithBells;  // map< 牌号, pair<Job*, int> > 
-
 	vector<BellBatch*> jobsBatch;  // pair<牌号, vector<Job*>>
 	initialJobsBatch(jobsMap, machsMap, jobsCodeVec, jobsWithBell, jobsWithBells, jobsBatch);
 
@@ -4753,9 +4916,14 @@ void main()
 	jobsWithDueDate.reserve(jobsMap.size());
 	jobsWithTotalProTime.reserve(jobsMap.size());
 	jobsWithSlackTime.reserve(jobsMap.size());
+
+	cout <<"  jobsWithDueDate.size()=" << jobsWithDueDate.size() << endl;
+	cout << "  jobsMap.size()=" << jobsMap.size() << endl;
+
 	// 初始化不同的job vector，处理时间，松弛时间，截止时间
 	initialJobVecs(jobsMap, machsMap, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
+	//cout << "aaaaaaaaaaaaa" << endl;
 	// 打印交期、处理时间、松弛时间
 	printDueProSlackTime(jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
@@ -4922,13 +5090,13 @@ void main()
 	cout << "Solving..." << endl;
 	Sleep(2);
 
-	rule_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	//rule_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
-	//NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);+
+	//NEH_Method(jobsMap, machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
 	//GA_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
-	//IPG_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
+	IPG_Method(machsMap, mysql, jobsWithDueDate, jobsWithTotalProTime, jobsWithSlackTime);
 
 
 	for (auto& jobInfo : jobsMap) delete jobInfo.second;

@@ -285,11 +285,18 @@ ptime getCurTime();
 string getTypeFromGrade(const string& alloyGrade);
 
 
+
 // 获取工单当前的宽度、厚度，长度，重量，内径
 
 double getCurWidth(Job* jobP, int machIndexOfJob);
 
+double getCurWidth2(Job* jobP, int machIndexOfJob);
+
 double getCurWidth(Job* jobP, string machCode, int reentry);
+
+double getCurWidth2(Job* jobP, string machCode, int reentry);
+
+
 
 double getCurThick(Job* jobP, int machIndexOfJob);
 
@@ -314,7 +321,7 @@ struct threadInfoOfLS {
 // --------MySQL数据库交互--------
 
 // 从数据库读入数据初始化Jobs和Machs的信息
-void initialByDatabase(MYSQL* mysql, vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap);
+void initialByDatabase(MYSQL* mysql, vector<string>& jobsCodeVec, vector<string>& machsCodeVec, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
 // 初始化设置，连接mysql数据库
 bool ConnectDatabase(MYSQL* mysql);
@@ -532,6 +539,10 @@ pair<double, double> scheduleForGAByJobOrder(vector<pair<string, Job*>>& jobOrde
 pair<double, double> scheduleForGAByNEH(vector<pair<string, Job*>>& jobOrder, map<string, Mach*>& machsMap, MYSQL* mysql,
 	vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<Job*, time_duration>>& jobsWithTotalProTime, vector<pair<Job*, time_duration>>& jobsWithSlackTime);
 
+// 用交期时间来初始化jobOrderInit2
+void iniByJobsWithDueDate(vector<pair<Job*, ptime>>& jobsWithDueDate, vector<pair<string, Job*>>& jobOrderInit2, map<string, Job*>& jobsMapInit2
+	, map<string, Mach*>& machsMap, map<string, Mach*>& machsMapInit2);
+
 
 // 排入气垫炉之前的工序，气垫炉中间的工序不排；最后一个工序是纵横剪的，则最后一个工序不排
 pair<double, double> scheduleForGAByJobOrder_BefAir(vector<pair<string, Job*>>& jobOrder,
@@ -636,8 +647,7 @@ void releaseThreadsInfoOfLS(const int num_thread, vector<threadInfoOfLS*>& threa
 
 // --------案例生成--------
 
-void initJobsInfo(vector<string> jobsCodeVec, vector<string> machsCodeVec, map<string, Job*> jobsMap, map<string, Mach*> machsMap);
-
+void initJobsInfo(vector<string>& jobsCodeVec, vector<string>& machsCodeVec, map<string, Job*>& jobsMap, map<string, Mach*>& machsMap);
 
 // --------END OF--案例生成--------
 

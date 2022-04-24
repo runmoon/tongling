@@ -17,6 +17,8 @@ public:
 
 	void initializePopulation(Chromosome* chromPInit, Chromosome* chromPInit2);
 
+	void initializePopulation2(Chromosome* chromPInit, Chromosome* chromPInit2, Chromosome* chromPInit3, Chromosome* chromPInit4);
+
 	void getNewChrome(Chromosome* chromPInit, Chromosome* chromNew);
 
 	// 初始化GA中用于对染色体解码（排产）信息
@@ -94,6 +96,9 @@ public:
 	// 通过“锦标赛剔除法”选择下一代，同时保留精英
 	void selection_ByTournamentReject();
 
+	// 检查是否重复太多，跳出局部最优
+	void checkRepetitionsAndDisturbance();
+
 	void printBestObjVal();
 
 	void runGA();
@@ -126,9 +131,9 @@ public:
 	vector<pair<Job*, pair<int, int>>> m_codeInfoOfGA;  // vector<pair<某Job*, pair<GA编码的制程开始索引, GA编码的制程结束索引>>>
 	list<pair<double, double>> m_recordOfBestObjVals;
 
-	double m_eliteRate = 0.015;
-	double m_mutatRate = 0.03;
-	double m_crossRate = 0.08;
+	double m_eliteRate = 0.015;  // 精英比例
+	double m_mutatRate = 0.03;   // 变异率
+	double m_crossRate = 0.08;   // 交叉率
 	int m_numForMutation;
 	int m_numForCrossOver;
 	int m_numElites;
@@ -172,6 +177,12 @@ pair<double, double> getObjectValuesOfChromo_Parallel(Chromosome* chromP, Geneti
 // 由初始排产结果获取染色体编码：排产结果须存入jobOrderScheduled中；编码信息须存入encodeInfoOfGA中
 void initChromCodesByInitSedul(vector<pair<string, Job*>>& jobOrderScheduled, const map<string, pair<int, pair<int, int>>>& encodeInfoOfGA
 	, const int totalLenOfGACode, Chromosome* chromPInit, Chromosome* chromPInit2);
+
+// 由初始排产结果获取染色体编码：排产结果须存入jobOrderScheduled中；编码信息须存入encodeInfoOfGA中
+// 由初始排产结果获取染色体编码：排产结果须存入jobOrderScheduled中；编码信息须存入encodeInfoOfGA中
+void initChromCodesByInitSedul2(vector<pair<string, Job*>>& jobOrderScheduled, vector<pair<string, Job*>>& jobOrderScheduled2
+	, const map<string, pair<int, pair<int, int>>>& encodeInfoOfGA, const int totalLenOfGACode
+	, Chromosome* chromPInit, Chromosome* chromPInit2, Chromosome* chromPInit3, Chromosome* chromPInit4);
 
 // 由预先代码获取染色体编码
 void initChromCodesByPreCode(const int totalLenOfGACode, Chromosome* chromPInit, Chromosome* chromPInit2);
